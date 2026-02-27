@@ -16,7 +16,7 @@ public class FileNode {
     public string Reason { get; set; } = "";
     
     // Estimates
-    public long? EstimatedSizeBytes { get; set; }
+    public long? EstimatedSize { get; set; }
 
     public FileNode(string path) {
         Path = path;

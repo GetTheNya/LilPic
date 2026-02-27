@@ -228,9 +228,15 @@ public partial class MainForm : Form {
 
         dryRunCompressor.ProcessEvent += (s, args) => dialog.UpdateProgress(args.ProcessedFiles, args.AllFiles);
         dryRunCompressor.WorkerActivity += (s, act) => dialog.UpdateWorkerSlot(act.Slot, act.FileName);
+        dryRunCompressor.LogMessage += (s, msg) => dialog.Log(msg.Message, msg.IsError);
+        dryRunCompressor.FileProcessed += (s, arg) => {
+            fileTreePanel.UpdateNodeStatus(arg.FilePath, arg.Status, arg.Reason, arg.EstimatedSize);
+            fileTreePanel.RefreshList();
+        };
         
         dryRunCompressor.ProcessCompleted += (s, args) => {
             dialog.ProcessCompleted();
+            fileTreePanel.RefreshList();
             this.Invoke(new MethodInvoker(() => {
                 long originalSize = dryRunCompressor.TotalOriginalSize;
                 long estimatedSize = dryRunCompressor.TotalEstimatedSize;
@@ -249,6 +255,7 @@ public partial class MainForm : Form {
 
         dryRunCompressor.ProcessCanceled += (s, args) => {
             dialog.ProcessCompleted();
+            fileTreePanel.RefreshList();
             this.Invoke(new MethodInvoker(() => MessageBox.Show("Dry Run Canceled.")));
         };
 
@@ -291,12 +298,20 @@ public partial class MainForm : Form {
 
         compressor.ProcessEvent += (s, args) => dialog.UpdateProgress(args.ProcessedFiles, args.AllFiles);
         compressor.WorkerActivity += (s, act) => dialog.UpdateWorkerSlot(act.Slot, act.FileName);
+        compressor.LogMessage += (s, msg) => dialog.Log(msg.Message, msg.IsError);
+        compressor.FileProcessed += (s, arg) => {
+            fileTreePanel.UpdateNodeStatus(arg.FilePath, arg.Status, arg.Reason, arg.EstimatedSize);
+            fileTreePanel.RefreshList();
+        };
+
         compressor.ProcessCompleted += (s, args) => {
             dialog.ProcessCompleted();
+            fileTreePanel.RefreshList();
             this.Invoke(new MethodInvoker(() => MessageBox.Show("Compression Finished!")));
         };
         compressor.ProcessCanceled += (s, args) => {
             dialog.ProcessCompleted();
+            fileTreePanel.RefreshList();
             this.Invoke(new MethodInvoker(() => MessageBox.Show("Compression Canceled.")));
         };
 

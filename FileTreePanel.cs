@@ -103,6 +103,7 @@ public partial class FileTreePanel : UserControl {
         };
         fileListView.Columns.Add("Name", 250);
         fileListView.Columns.Add("Size", 80);
+        fileListView.Columns.Add("Comp. Size", 90);
         fileListView.Columns.Add("Res", 100);
         fileListView.Columns.Add("Status", 80);
 
@@ -158,6 +159,24 @@ public partial class FileTreePanel : UserControl {
 
         RebuildFolderTree(path);
         ApplyFilter();
+
+        // Background resolution loading
+        Task.Run(() => {
+            int count = 0;
+            foreach (var node in allNodes) {
+                try {
+                    using (var stream = File.OpenRead(node.Path))
+                    using (var codec = SkiaSharp.SKCodec.Create(stream)) {
+                        if (codec != null) {
+                            node.Resolution = $"{codec.Info.Width}x{codec.Info.Height}";
+                        }
+                    }
+                } catch { }
+                count++;
+                if (count % 50 == 0) RefreshList();
+            }
+            RefreshList();
+        });
     }
 
     private void RebuildFolderTree(string rootPath) {
@@ -227,6 +246,7 @@ public partial class FileTreePanel : UserControl {
             var node = filteredNodes[e.ItemIndex];
             var item = new ListViewItem(node.Name) { Checked = node.IsChecked };
             item.SubItems.Add(Utils.FormatSize(node.Size));
+            item.SubItems.Add(node.EstimatedSize.HasValue ? Utils.FormatSize(node.EstimatedSize.Value) : "—");
             item.SubItems.Add(node.Resolution);
             item.SubItems.Add(node.Status);
 
@@ -266,6 +286,23 @@ public partial class FileTreePanel : UserControl {
             var index = fileListView.SelectedIndices[0];
             var node = filteredNodes[index];
             FileDoubleClicked?.Invoke(this, node.Path);
+        }
+    }
+
+    public void RefreshList() {
+        if (fileListView.InvokeRequired) {
+            fileListView.BeginInvoke(new Action(RefreshList));
+            return;
+        }
+        fileListView.Invalidate();
+    }
+
+    public void UpdateNodeStatus(string filePath, string status, string reason, long size = 0) {
+        var node = allNodes.FirstOrDefault(n => n.Path == filePath);
+        if (node != null) {
+            node.Status = status;
+            node.Reason = reason;
+            if (size > 0) node.EstimatedSize = size;
         }
     }
 
