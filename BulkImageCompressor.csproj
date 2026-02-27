@@ -17,6 +17,7 @@
     <PackageReference Include="ShellProgressBar" Version="5.2.0" />
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.2" />
+    <PackageReference Include="SkiaSharp.Views.WindowsForms" Version="3.119.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -8,9 +8,6 @@ public enum SaveAs {
     WEBP,
 }
 
-public class AllowedExtensions {
-    public static readonly string[] ImageExtensions = { ".JPEG", ".PNG", ".JPE", ".JPG", ".WEBP" };
-}
 
 public class ProcessArgs : EventArgs {
     public int ProcessedFiles { get; private set; }

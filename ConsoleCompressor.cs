@@ -117,9 +117,9 @@ Examples:
                     return;
                 }
             } else if (arg is "-compresschild" or "--cc") {
-                _compressor.CompressChild = true;
+                _compressor.CompressChildren = true;
             } else if (arg is "-overwrite" or "--ow") {
-                _compressor.Overwrite = true;
+                _compressor.OverwritePolicy = 1;
             } else if (arg is "-compressbiggerthan" or "--cbt") {
                 if (_args.Count > i + 1 && int.TryParse(_args[i + 1], out var size)) {
                     _compressor.MinimumFileSize = size * 1024;
@@ -140,12 +140,12 @@ Examples:
 
     private void PrintSettings() {
         var settings = $"-----Settings for compression-----\n" + $"Input Folder: {_compressor.CompressPath}\n";
-        settings += _compressor.Overwrite
+        settings += _compressor.OverwritePolicy == 1
             ? "Overwrite Original Images: True\n"
             : $"Output Folder: {_compressor.SavePath}\n";
         settings += $"Compression Quality: {_compressor.Quality.ToString()}\n" +
                     $"Resize Percentage: {_compressor.Resize.ToString()}\n" +
-                    $"Compress Images in Child Folders: {_compressor.CompressChild.ToString()}\n" +
+                    $"Compress Images in Child Folders: {_compressor.CompressChildren.ToString()}\n" +
                     "Compress Images Larger Than: ";
         settings += _compressor.MinimumFileSize == -1 ? "Disabled\n" : _compressor.MinimumFileSize / 1024 + " KB\n";
         settings += "Strip Metadata: " + _compressor.StripMetadata + "\n";
