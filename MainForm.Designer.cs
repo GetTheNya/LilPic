@@ -35,6 +35,7 @@ partial class MainForm {
         this.overwritePolicyLabel = new System.Windows.Forms.Label();
         this.overwritePolicyCombo = new System.Windows.Forms.ComboBox();
         this.compressCompressedCBox = new System.Windows.Forms.CheckBox();
+        this.copySkippedCBox = new System.Windows.Forms.CheckBox();
         this.formatPanel = new System.Windows.Forms.Panel();
         this.saveWEBPRButton = new System.Windows.Forms.RadioButton();
         this.savePNGRButton = new System.Windows.Forms.RadioButton();
@@ -128,7 +129,7 @@ partial class MainForm {
 
         // GroupBox 1 (Parameters)
         this.groupBox1.Location = new System.Drawing.Point(10, 120);
-        this.groupBox1.Size = new System.Drawing.Size(460, 360);
+        this.groupBox1.Size = new System.Drawing.Size(460, 440);
         this.groupBox1.Text = "Compression Parameters";
 
         this.qualityLabel.Location = new System.Drawing.Point(10, 30);
@@ -221,23 +222,27 @@ partial class MainForm {
         this.compressCompressedCBox.Location = new System.Drawing.Point(10, 210);
         this.compressCompressedCBox.Text = "Compress already compressed";
         this.compressCompressedCBox.Size = new System.Drawing.Size(300, 20);
+        this.copySkippedCBox.Location = new System.Drawing.Point(10, 235);
+        this.copySkippedCBox.Text = "Copy skipped images (as-is) to output";
+        this.copySkippedCBox.Size = new System.Drawing.Size(300, 20);
 
         this.groupBox1.Controls.Add(this.stripMetadataCBox);
         this.groupBox1.Controls.Add(this.copyNonImagesCBox);
         this.groupBox1.Controls.Add(this.compressCompressedCBox);
+        this.groupBox1.Controls.Add(this.copySkippedCBox);
 
-        this.overwritePolicyLabel.Location = new System.Drawing.Point(10, 255);
+        this.overwritePolicyLabel.Location = new System.Drawing.Point(10, 280);
         this.overwritePolicyLabel.Text = "Overwrite Policy:";
         this.overwritePolicyLabel.Size = new System.Drawing.Size(100, 20);
-        this.overwritePolicyCombo.Location = new System.Drawing.Point(115, 252);
+        this.overwritePolicyCombo.Location = new System.Drawing.Point(115, 277);
         this.overwritePolicyCombo.Size = new System.Drawing.Size(200, 21);
-        this.overwritePolicyCombo.Items.AddRange(new object[] { "Append Suffix (1)", "Overwrite Original", "Skip Existing" });
+        this.overwritePolicyCombo.Items.AddRange(new object[] { "Append Suffix (1)", "Overwrite Original", "Skip Existing", "Overwrite Target" });
         
         this.groupBox1.Controls.Add(this.overwritePolicyLabel);
         this.groupBox1.Controls.Add(this.overwritePolicyCombo);
 
-        this.formatPanel.Location = new System.Drawing.Point(10, 290);
-        this.formatPanel.Size = new System.Drawing.Size(440, 60);
+        this.formatPanel.Location = new System.Drawing.Point(10, 315);
+        this.formatPanel.Size = new System.Drawing.Size(440, 40);
         this.saveJPEGRButton.Location = new System.Drawing.Point(0, 5);
         this.saveJPEGRButton.Text = "JPEG";
         this.saveJPEGRButton.Size = new System.Drawing.Size(120, 24);
@@ -253,7 +258,39 @@ partial class MainForm {
 
         this.groupBox1.Controls.Add(this.formatPanel);
 
-        this.groupBox2.Location = new System.Drawing.Point(10, 490);
+        // Skip Logic
+        this.skipMinSizeCBox = new System.Windows.Forms.CheckBox();
+        this.minSizeNumericKB = new System.Windows.Forms.NumericUpDown();
+        this.skipMinResCBox = new System.Windows.Forms.CheckBox();
+        this.minWidthNumeric = new System.Windows.Forms.NumericUpDown();
+        this.minHeightNumeric = new System.Windows.Forms.NumericUpDown();
+
+        this.skipMinSizeCBox.Location = new System.Drawing.Point(10, 365);
+        this.skipMinSizeCBox.Text = "Skip if size smaller than (KB):";
+        this.skipMinSizeCBox.Size = new System.Drawing.Size(180, 20);
+        this.minSizeNumericKB.Location = new System.Drawing.Point(195, 363);
+        this.minSizeNumericKB.Size = new System.Drawing.Size(60, 20);
+        this.minSizeNumericKB.Maximum = 999999;
+ 
+        this.skipMinResCBox.Location = new System.Drawing.Point(10, 395);
+        this.skipMinResCBox.Text = "Skip if res smaller than:";
+        this.skipMinResCBox.Size = new System.Drawing.Size(150, 20);
+        this.minWidthNumeric.Location = new System.Drawing.Point(165, 393);
+        this.minWidthNumeric.Size = new System.Drawing.Size(60, 20);
+        this.minWidthNumeric.Maximum = 99999;
+        Label xLabel = new Label() { Text = "x", Location = new System.Drawing.Point(232, 395), Size = new System.Drawing.Size(15, 20) };
+        this.minHeightNumeric.Location = new System.Drawing.Point(250, 393);
+        this.minHeightNumeric.Size = new System.Drawing.Size(60, 20);
+        this.minHeightNumeric.Maximum = 99999;
+
+        this.groupBox1.Controls.Add(this.skipMinSizeCBox);
+        this.groupBox1.Controls.Add(this.minSizeNumericKB);
+        this.groupBox1.Controls.Add(this.skipMinResCBox);
+        this.groupBox1.Controls.Add(this.minWidthNumeric);
+        this.groupBox1.Controls.Add(xLabel);
+        this.groupBox1.Controls.Add(this.minHeightNumeric);
+
+        this.groupBox2.Location = new System.Drawing.Point(10, 570);
         this.groupBox2.Size = new System.Drawing.Size(460, 65);
         this.groupBox2.Text = "Output Directory";
         this.savePathInput.Location = new System.Drawing.Point(10, 25);
@@ -265,10 +302,10 @@ partial class MainForm {
         this.groupBox2.Controls.Add(this.chooseSaveFolderBtn);
 
         // Buttons
-        this.dryRunBtn.Location = new System.Drawing.Point(220, 560);
+        this.dryRunBtn.Location = new System.Drawing.Point(220, 645);
         this.dryRunBtn.Size = new System.Drawing.Size(120, 40);
         this.dryRunBtn.Text = "Dry Run (Stats)";
-        this.compressBtn.Location = new System.Drawing.Point(350, 560);
+        this.compressBtn.Location = new System.Drawing.Point(350, 645);
         this.compressBtn.Size = new System.Drawing.Size(120, 40);
         this.compressBtn.Text = "START";
         this.compressBtn.BackColor = System.Drawing.Color.LightGreen;
@@ -280,7 +317,7 @@ partial class MainForm {
         // MainForm
         this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-        this.ClientSize = new System.Drawing.Size(1100, 672);
+        this.ClientSize = new System.Drawing.Size(1100, 740);
         this.Controls.Add(this.splitContainer);
         this.Controls.Add(this.statusStrip);
         this.Name = "MainForm";
@@ -292,13 +329,15 @@ partial class MainForm {
         this.splitContainer.ResumeLayout(false);
         this.directoryBox.ResumeLayout(false);
         this.directoryBox.PerformLayout();
-        this.groupBox1.ResumeLayout(false);
-        this.groupBox1.PerformLayout();
-        this.formatPanel.ResumeLayout(false);
-        ((System.ComponentModel.ISupportInitialize)(this.resizeNumeric)).EndInit();
-        ((System.ComponentModel.ISupportInitialize)(this.resizeTrackBar)).EndInit();
         ((System.ComponentModel.ISupportInitialize)(this.qualityNumeric)).EndInit();
         ((System.ComponentModel.ISupportInitialize)(this.qualityTrackBar)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.resizeNumeric)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.resizeTrackBar)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.targetWidthInput)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.targetHeightInput)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.minSizeNumericKB)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.minWidthNumeric)).EndInit();
+        ((System.ComponentModel.ISupportInitialize)(this.minHeightNumeric)).EndInit();
         this.groupBox2.ResumeLayout(false);
         this.groupBox2.PerformLayout();
         this.statusStrip.ResumeLayout(false);
@@ -326,6 +365,7 @@ partial class MainForm {
     private System.Windows.Forms.CheckBox stripMetadataCBox;
     private System.Windows.Forms.CheckBox copyNonImagesCBox;
     private System.Windows.Forms.CheckBox compressCompressedCBox;
+    private System.Windows.Forms.CheckBox copySkippedCBox;
     private System.Windows.Forms.Label overwritePolicyLabel;
     private System.Windows.Forms.ComboBox overwritePolicyCombo;
     private System.Windows.Forms.Panel formatPanel;
@@ -349,4 +389,9 @@ partial class MainForm {
     private System.Windows.Forms.Label labelH;
     private System.Windows.Forms.NumericUpDown targetWidthInput;
     private System.Windows.Forms.NumericUpDown targetHeightInput;
+    private System.Windows.Forms.CheckBox skipMinSizeCBox;
+    private System.Windows.Forms.NumericUpDown minSizeNumericKB;
+    private System.Windows.Forms.CheckBox skipMinResCBox;
+    private System.Windows.Forms.NumericUpDown minWidthNumeric;
+    private System.Windows.Forms.NumericUpDown minHeightNumeric;
 }

@@ -14,8 +14,11 @@ public partial class FileTreePanel : UserControl {
     private TextBox searchBox;
     private CheckBox regexCBox;
     private FlowLayoutPanel filterPanel;
+    private FlowLayoutPanel toolsPanel;
+    private FlowLayoutPanel extensionsPanel;
     private StatusStrip statusStrip;
     private ToolStripStatusLabel countLabel;
+    private ToolStripStatusLabel resStatusLabel;
     private CheckBox folderViewToggle;
 
     private List<FileNode> allNodes = new();
@@ -23,6 +26,18 @@ public partial class FileTreePanel : UserControl {
     private string activeFilter = "All";
     private string currentRootPath = "";
     private string selectedFolderPath = "";
+    
+    // Sort state
+    private int sortColumn = -1;
+    private bool sortAscending = true;
+
+    private bool skipSize;
+    private long minSizeKB;
+    private bool skipRes;
+    private int minW;
+    private int minH;
+
+    public bool IsCalculatingResolutions { get; private set; }
 
     public event EventHandler SelectionChanged;
     public event EventHandler<string> FileDoubleClicked;
@@ -66,16 +81,23 @@ public partial class FileTreePanel : UserControl {
         topPanel.Controls.Add(folderViewToggle);
 
         // Filter Chips
-        filterPanel = new FlowLayoutPanel { 
+        toolsPanel = new FlowLayoutPanel { 
             Dock = DockStyle.Top, 
-            Height = 35, 
+            AutoSize = true,
             Padding = new Padding(5)
         };
-        AddFilterChip("All");
-        AddFilterChip("> 5MB");
-        AddFilterChip("PNG");
-        AddFilterChip("JPG");
-        AddFilterChip("WEBP");
+
+        filterPanel = new FlowLayoutPanel { 
+            Dock = DockStyle.Top, 
+            AutoSize = true,
+            Padding = new Padding(5)
+        };
+
+        extensionsPanel = new FlowLayoutPanel {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(5)
+        };
 
         // Split Container for Tree and List
         splitContainer = new SplitContainer {
@@ -111,6 +133,7 @@ public partial class FileTreePanel : UserControl {
         fileListView.ItemCheck += FileListView_ItemCheck;
         fileListView.DoubleClick += FileListView_DoubleClick;
         fileListView.MouseDown += FileListView_MouseDown;
+        fileListView.ColumnClick += FileListView_ColumnClick;
 
         splitContainer.Panel1.Controls.Add(folderTreeView);
         splitContainer.Panel2.Controls.Add(fileListView);
@@ -118,30 +141,106 @@ public partial class FileTreePanel : UserControl {
         // Status Strip
         statusStrip = new StatusStrip();
         countLabel = new ToolStripStatusLabel("0 files found");
+        resStatusLabel = new ToolStripStatusLabel("") { 
+            Alignment = ToolStripItemAlignment.Right, 
+            ForeColor = Color.DarkBlue,
+            Spring = true,
+            TextAlign = ContentAlignment.MiddleRight
+        };
         statusStrip.Items.Add(countLabel);
+        statusStrip.Items.Add(resStatusLabel);
 
         this.Controls.Add(splitContainer);
+        this.Controls.Add(extensionsPanel);
         this.Controls.Add(filterPanel);
+        this.Controls.Add(toolsPanel);
         this.Controls.Add(topPanel);
         this.Controls.Add(statusStrip);
+
+        // Initial chips (placeholder, will be updated on load)
+        UpdateFilterChips();
     }
 
-    private void AddFilterChip(string text) {
+    private void UpdateFilterChips() {
+        if (fileListView.InvokeRequired) {
+            this.BeginInvoke(new Action(UpdateFilterChips));
+            return;
+        }
+
+        toolsPanel.Controls.Clear();
+        filterPanel.Controls.Clear();
+        extensionsPanel.Controls.Clear();
+        
+        // --- Row 1: Selection Tools ---
+        var selectAllBtn = new Button { Text = "☑ Check All", AutoSize = true, Margin = new Padding(2) };
+        selectAllBtn.Click += (s, e) => { foreach(var n in filteredNodes) n.IsChecked = true; RefreshList(); UpdateStatusLabel(); SelectionChanged?.Invoke(this, EventArgs.Empty); };
+        
+        var unselectAllBtn = new Button { Text = "☐ Uncheck All", AutoSize = true, Margin = new Padding(2) };
+        unselectAllBtn.Click += (s, e) => { foreach(var n in filteredNodes) { n.IsChecked = false; n.IsManuallyUnchecked = true; } RefreshList(); UpdateStatusLabel(); SelectionChanged?.Invoke(this, EventArgs.Empty); };
+        
+        toolsPanel.Controls.Add(selectAllBtn);
+        toolsPanel.Controls.Add(unselectAllBtn);
+
+        // --- Row 2: General Filters ---
+        AddFilterChip("All", filterPanel);
+        AddFilterChip("Checked", filterPanel);
+        AddFilterChip("Large (> 5MB)", filterPanel);
+        AddFilterChip("Medium (1-5MB)", filterPanel);
+        AddFilterChip("Small (< 1MB)", filterPanel);
+
+        var clearBtn = new Button {
+            Text = "✖ Clear All",
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = Color.Red,
+            AutoSize = true,
+            Margin = new Padding(2)
+        };
+        clearBtn.Click += (s, e) => {
+            searchBox.Text = "";
+            activeFilter = "All";
+            ResetChipColors();
+            ApplyFilter();
+        };
+        filterPanel.Controls.Add(clearBtn);
+
+        // --- Row 3: Extension Filters ---
+        var extensions = allNodes
+            .Select(n => Path.GetExtension(n.Path).ToUpper().TrimStart('.'))
+            .Select(e => e == "JPEG" ? "JPG" : e)
+            .Distinct()
+            .OrderBy(e => e);
+
+        foreach (var ext in extensions) {
+            if (!string.IsNullOrEmpty(ext)) AddFilterChip(ext, extensionsPanel);
+        }
+    }
+
+    private void AddFilterChip(string text, FlowLayoutPanel panel) {
         var btn = new Button { 
             Text = text, 
             FlatStyle = FlatStyle.Flat,
             BackColor = (text == activeFilter) ? Color.LightBlue : Color.White,
             AutoSize = true,
-            Margin = new Padding(2)
+            Margin = new Padding(2),
+            Tag = "Chip"
         };
         btn.Click += (s, e) => {
             activeFilter = btn.Text;
-            foreach (Control c in filterPanel.Controls) {
-                if (c is Button b) b.BackColor = (b.Text == activeFilter) ? Color.LightBlue : Color.White;
-            }
+            ResetChipColors();
             ApplyFilter();
         };
-        filterPanel.Controls.Add(btn);
+        panel.Controls.Add(btn);
+    }
+
+    private void ResetChipColors() {
+        var panels = new[] { filterPanel, extensionsPanel };
+        foreach (var p in panels) {
+            foreach (Control c in p.Controls) {
+                if (c is Button b && b.Tag as string == "Chip") {
+                    b.BackColor = (b.Text == activeFilter) ? Color.LightBlue : Color.White;
+                }
+            }
+        }
     }
 
     public void LoadDirectory(string path) {
@@ -158,25 +257,102 @@ public partial class FileTreePanel : UserControl {
         }
 
         RebuildFolderTree(path);
+        UpdateFilterChips();
         ApplyFilter();
 
         // Background resolution loading
         Task.Run(() => {
+            IsCalculatingResolutions = true;
             int count = 0;
+            int total = allNodes.Count;
+            
             foreach (var node in allNodes) {
                 try {
                     using (var stream = File.OpenRead(node.Path))
                     using (var codec = SkiaSharp.SKCodec.Create(stream)) {
                         if (codec != null) {
-                            node.Resolution = $"{codec.Info.Width}x{codec.Info.Height}";
+                            node.Width = codec.Info.Width;
+                            node.Height = codec.Info.Height;
+                            node.Resolution = $"{node.Width}x{node.Height}";
                         }
                     }
                 } catch { }
                 count++;
-                if (count % 50 == 0) RefreshList();
+                if (count % 10 == 0 || count == total) {
+                    string status = count == total ? "" : $"Loading resolutions... {count}/{total}";
+                    this.Invoke(new Action(() => resStatusLabel.Text = status));
+                    if (count % 50 == 0) {
+                        if (skipRes) this.Invoke(new Action(() => ApplySkipFilters()));
+                        RefreshList();
+                    }
+                }
             }
+            if (skipRes) this.Invoke(new Action(() => ApplySkipFilters()));
+            IsCalculatingResolutions = false;
             RefreshList();
         });
+    }
+
+    public void SetSkipFilters(bool skipSize, long minSizeKB, bool skipRes, int minW, int minH) {
+        this.skipSize = skipSize;
+        this.minSizeKB = minSizeKB;
+        this.skipRes = skipRes;
+        this.minW = minW;
+        this.minH = minH;
+        ApplySkipFilters();
+    }
+
+    private void ApplySkipFilters() {
+        bool changed = false;
+        foreach (var node in allNodes) {
+            bool shouldSkip = false;
+            if (skipSize && node.Size < minSizeKB * 1024) shouldSkip = true;
+            if (!shouldSkip && skipRes && node.Width > 0 && node.Height > 0 && (node.Width < minW || node.Height < minH)) shouldSkip = true;
+
+            bool nextChecked;
+            if (shouldSkip) {
+                nextChecked = false;
+            } else {
+                nextChecked = !node.IsManuallyUnchecked;
+            }
+
+            if (node.IsChecked != nextChecked) {
+                node.IsChecked = nextChecked;
+                changed = true;
+            }
+        }
+        if (changed) {
+            RefreshList();
+            UpdateStatusLabel();
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void FileListView_ColumnClick(object sender, ColumnClickEventArgs e) {
+        if (e.Column == sortColumn) {
+            sortAscending = !sortAscending;
+        } else {
+            sortColumn = e.Column;
+            sortAscending = true;
+        }
+        ApplySort();
+    }
+
+    private void ApplySort() {
+        if (sortColumn == -1) return;
+
+        filteredNodes.Sort((x, y) => {
+            int result = sortColumn switch {
+                0 => string.Compare(x.Name, y.Name),
+                1 => x.Size.CompareTo(y.Size),
+                2 => (x.EstimatedSize ?? 0).CompareTo(y.EstimatedSize ?? 0),
+                3 => (x.Width * x.Height).CompareTo(y.Width * y.Height),
+                4 => string.Compare(x.Status, y.Status),
+                _ => 0
+            };
+            return sortAscending ? result : -result;
+        });
+        fileListView.Invalidate();
     }
 
     private void RebuildFolderTree(string rootPath) {
@@ -221,24 +397,41 @@ public partial class FileTreePanel : UserControl {
 
         // Chip Filter
         switch (activeFilter) {
-            case "> 5MB":
+            case "Checked":
+                query = query.Where(n => n.IsChecked);
+                break;
+            case "Large (> 5MB)":
                 query = query.Where(n => n.Size > 5 * 1024 * 1024);
                 break;
-            case "PNG":
-                query = query.Where(n => n.Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase));
+            case "Medium (1-5MB)":
+                query = query.Where(n => n.Size >= 1024 * 1024 && n.Size <= 5 * 1024 * 1024);
                 break;
-            case "JPG":
-                query = query.Where(n => n.Name.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || n.Name.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase));
+            case "Small (< 1MB)":
+                query = query.Where(n => n.Size < 1024 * 1024);
                 break;
-            case "WEBP":
-                query = query.Where(n => n.Name.EndsWith(".webp", StringComparison.OrdinalIgnoreCase));
+            case "All":
+                break;
+            default:
+                string filter = activeFilter;
+                if (filter == "JPG") {
+                    query = query.Where(n => Path.GetExtension(n.Path).Equals(".JPG", StringComparison.OrdinalIgnoreCase) || 
+                                             Path.GetExtension(n.Path).Equals(".JPEG", StringComparison.OrdinalIgnoreCase));
+                } else {
+                    query = query.Where(n => Path.GetExtension(n.Path).Equals("." + filter, StringComparison.OrdinalIgnoreCase));
+                }
                 break;
         }
 
         filteredNodes = query.ToList();
+        ApplySort();
         fileListView.VirtualListSize = filteredNodes.Count;
-        countLabel.Text = $"{filteredNodes.Count} files shown ({allNodes.Count} total images)";
+        UpdateStatusLabel();
         fileListView.Invalidate();
+    }
+
+    private void UpdateStatusLabel() {
+        int selected = allNodes.Count(n => n.IsChecked);
+        countLabel.Text = $"{filteredNodes.Count} files shown ({selected} selected, {allNodes.Count} total images)";
     }
 
     private void FileListView_RetrieveVirtualItem(object sender, RetrieveVirtualItemEventArgs e) {
@@ -258,23 +451,25 @@ public partial class FileTreePanel : UserControl {
     }
 
     private void FileListView_ItemCheck(object sender, ItemCheckEventArgs e) {
-        // In VirtualMode, we must update the underlying data source manually.
-        // ItemCheck is called before the change is applied to the UI.
         if (e.Index >= 0 && e.Index < filteredNodes.Count) {
-            filteredNodes[e.Index].IsChecked = (e.NewValue == CheckState.Checked);
-            // We don't need to invalidate here as RetrieveVirtualItem will use the new value
+            var node = filteredNodes[e.Index];
+            bool newValue = (e.NewValue == CheckState.Checked);
+            node.IsChecked = newValue;
+            node.IsManuallyUnchecked = !newValue;
+            UpdateStatusLabel();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
     private void FileListView_MouseDown(object sender, MouseEventArgs e) {
-        // Manual hit testing for checkboxes in VirtualMode
         var info = fileListView.HitTest(e.Location);
         if (info.Item != null && info.Location == ListViewHitTestLocations.StateImage) {
             int index = info.Item.Index;
             if (index >= 0 && index < filteredNodes.Count) {
                 var node = filteredNodes[index];
                 node.IsChecked = !node.IsChecked;
+                node.IsManuallyUnchecked = !node.IsChecked;
+                UpdateStatusLabel();
                 fileListView.Invalidate(info.Item.Bounds);
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
             }

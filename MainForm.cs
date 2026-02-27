@@ -14,6 +14,7 @@ public partial class MainForm : Form {
     private AppSettings settings;
     private Compressor compressor;
     private bool suppressSettingsUpdate = false;
+    private bool isManualSavePath = false;
 
     public MainForm() {
         InitializeComponent();
@@ -45,13 +46,19 @@ public partial class MainForm : Form {
         overwritePolicyCombo.SelectedIndex = settings.OverwritePolicy;
         stripMetadataCBox.Checked = settings.StripMetadata;
         copyNonImagesCBox.Checked = settings.CopyNonImages;
+        copySkippedCBox.Checked = settings.CopySkippedImages;
         compressCompressedCBox.Checked = settings.CompressAlreadyCompressed;
-        
         switch (settings.SaveAsFormat) {
             case 0: saveJPEGRButton.Checked = true; break;
             case 1: savePNGRButton.Checked = true; break;
             case 2: saveWEBPRButton.Checked = true; break;
         }
+
+        skipMinSizeCBox.Checked = settings.SkipIfSmallerThanSize;
+        minSizeNumericKB.Value = (decimal)settings.MinSizeToProcessKB;
+        skipMinResCBox.Checked = settings.SkipIfSmallerThanRes;
+        minWidthNumeric.Value = settings.MinWidthToProcess;
+        minHeightNumeric.Value = settings.MinHeightToProcess;
 
         suppressSettingsUpdate = false;
         
@@ -70,6 +77,7 @@ public partial class MainForm : Form {
         settings.OverwritePolicy = overwritePolicyCombo.SelectedIndex;
         settings.StripMetadata = stripMetadataCBox.Checked;
         settings.CopyNonImages = copyNonImagesCBox.Checked;
+        settings.CopySkippedImages = copySkippedCBox.Checked;
         settings.CompressAlreadyCompressed = compressCompressedCBox.Checked;
         
         settings.TargetWidth = (int)targetWidthInput.Value;
@@ -80,6 +88,16 @@ public partial class MainForm : Form {
         else if (savePNGRButton.Checked) settings.SaveAsFormat = 1;
         else if (saveWEBPRButton.Checked) settings.SaveAsFormat = 2;
 
+        settings.SkipIfSmallerThanSize = skipMinSizeCBox.Checked;
+        settings.MinSizeToProcessKB = (long)minSizeNumericKB.Value;
+        settings.SkipIfSmallerThanRes = skipMinResCBox.Checked;
+        settings.MinWidthToProcess = (int)minWidthNumeric.Value;
+        settings.MinHeightToProcess = (int)minHeightNumeric.Value;
+
+        fileTreePanel.SetSkipFilters(
+            settings.SkipIfSmallerThanSize, settings.MinSizeToProcessKB,
+            settings.SkipIfSmallerThanRes, settings.MinWidthToProcess, settings.MinHeightToProcess);
+
         settings.Save();
     }
 
@@ -87,21 +105,69 @@ public partial class MainForm : Form {
         presetsCombo.SelectedIndexChanged += PresetsCombo_SelectedIndexChanged;
         resizeModeCombo.SelectedIndexChanged += (s, e) => { UpdateResizeModeUI(); SaveSettings(); };
         
-        qualityTrackBar.Scroll += (s, e) => { qualityNumeric.Value = qualityTrackBar.Value; SaveSettings(); };
-        qualityNumeric.ValueChanged += (s, e) => { qualityTrackBar.Value = (int)qualityNumeric.Value; SaveSettings(); };
+        qualityTrackBar.Scroll += (s, e) => { 
+            if (qualityNumeric.Value != qualityTrackBar.Value) {
+                qualityNumeric.Value = qualityTrackBar.Value; 
+                SaveSettings(); 
+            }
+        };
+        qualityNumeric.ValueChanged += (s, e) => { 
+            if (qualityTrackBar.Value != (int)qualityNumeric.Value) {
+                qualityTrackBar.Value = (int)qualityNumeric.Value; 
+                SaveSettings(); 
+            }
+        };
+        qualityNumeric.KeyUp += (s, e) => {
+            if (decimal.TryParse(qualityNumeric.Text, out decimal val)) {
+                if (val >= 0 && val <= 100) {
+                    qualityNumeric.Value = val;
+                    qualityTrackBar.Value = (int)val;
+                    SaveSettings();
+                }
+            }
+        };
         
-        resizeTrackBar.Scroll += (s, e) => { resizeNumeric.Value = resizeTrackBar.Value; SaveSettings(); };
-        resizeNumeric.ValueChanged += (s, e) => { resizeTrackBar.Value = (int)resizeNumeric.Value; SaveSettings(); };
+        resizeTrackBar.Scroll += (s, e) => { 
+            if (resizeNumeric.Value != resizeTrackBar.Value) {
+                resizeNumeric.Value = resizeTrackBar.Value; 
+                SaveSettings(); 
+            }
+        };
+        resizeNumeric.ValueChanged += (s, e) => { 
+            if (resizeTrackBar.Value != (int)resizeNumeric.Value) {
+                resizeTrackBar.Value = (int)resizeNumeric.Value; 
+                SaveSettings(); 
+            }
+        };
+        resizeNumeric.KeyUp += (s, e) => {
+            if (decimal.TryParse(resizeNumeric.Text, out decimal val)) {
+                if (val >= 0 && val <= 100) {
+                    resizeNumeric.Value = val;
+                    resizeTrackBar.Value = (int)val;
+                    SaveSettings();
+                }
+            }
+        };
 
         directoryPathInput.TextChanged += (s, e) => { 
-            if (Directory.Exists(directoryPathInput.Text)) fileTreePanel.LoadDirectory(directoryPathInput.Text);
+            string input = directoryPathInput.Text;
+            if (Directory.Exists(input)) {
+                fileTreePanel.LoadDirectory(input);
+                if (!isManualSavePath && !string.IsNullOrEmpty(input)) {
+                    savePathInput.Text = Path.Combine(input, "Compressed");
+                }
+            }
             SaveSettings(); 
         };
         
-        savePathInput.TextChanged += (s, e) => SaveSettings();
+        savePathInput.TextChanged += (s, e) => {
+            if (savePathInput.Focused) isManualSavePath = true;
+            SaveSettings();
+        };
         
         stripMetadataCBox.CheckedChanged += (s, e) => SaveSettings();
         copyNonImagesCBox.CheckedChanged += (s, e) => SaveSettings();
+        copySkippedCBox.CheckedChanged += (s, e) => SaveSettings();
         compressCompressedCBox.CheckedChanged += (s, e) => SaveSettings();
         overwritePolicyCombo.SelectedIndexChanged += (s, e) => SaveSettings();
         
@@ -113,12 +179,41 @@ public partial class MainForm : Form {
         targetHeightInput.ValueChanged += (s, e) => SaveSettings();
         targetSizeInput.TextChanged += (s, e) => SaveSettings();
 
+        skipMinSizeCBox.CheckedChanged += (s, e) => SaveSettings();
+        minSizeNumericKB.KeyUp += (s, e) => {
+            if (decimal.TryParse(minSizeNumericKB.Text, out decimal val)) {
+                if (val >= minSizeNumericKB.Minimum && val <= minSizeNumericKB.Maximum) minSizeNumericKB.Value = val;
+            }
+            SaveSettings();
+        };
+
+        skipMinResCBox.CheckedChanged += (s, e) => SaveSettings();
+        minWidthNumeric.ValueChanged += (s, e) => SaveSettings();
+        minWidthNumeric.KeyUp += (s, e) => {
+            if (decimal.TryParse(minWidthNumeric.Text, out decimal val)) {
+                if (val >= minWidthNumeric.Minimum && val <= minWidthNumeric.Maximum) minWidthNumeric.Value = val;
+            }
+            SaveSettings();
+        };
+        minHeightNumeric.ValueChanged += (s, e) => SaveSettings();
+        minHeightNumeric.KeyUp += (s, e) => {
+            if (decimal.TryParse(minHeightNumeric.Text, out decimal val)) {
+                if (val >= minHeightNumeric.Minimum && val <= minHeightNumeric.Maximum) minHeightNumeric.Value = val;
+            }
+            SaveSettings();
+        };
+
         chooseFolderBtn.Click += chooseFolderBtn_Click;
         chooseSaveFolderBtn.Click += chooseSaveFolderBtn_Click;
         dryRunBtn.Click += dryRunBtn_Click;
         compressBtn.Click += compressBtn_Click;
 
         fileTreePanel.FileDoubleClicked += (s, filePath) => {
+            if (fileTreePanel.IsCalculatingResolutions) {
+                MessageBox.Show("Please wait, image resolutions are still being calculated.", "Resolution Calculating", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
             var format = saveJPEGRButton.Checked ? SKEncodedImageFormat.Jpeg :
                          savePNGRButton.Checked ? SKEncodedImageFormat.Png : SKEncodedImageFormat.Webp;
             
@@ -215,11 +310,17 @@ public partial class MainForm : Form {
             SaveAs = format,
             StripMetadata = stripMetadataCBox.Checked,
             CopyNonImages = copyNonImagesCBox.Checked,
+            CopySkippedImages = copySkippedCBox.Checked,
             OverwritePolicy = overwritePolicyCombo.SelectedIndex,
             ExplicitFiles = selectedFiles,
             TargetWidth = settings.ResizeMode == 1 ? (int)targetWidthInput.Value : 0,
             TargetHeight = settings.ResizeMode == 1 ? (int)targetHeightInput.Value : 0,
             TargetFileSizeBytes = settings.ResizeMode == 2 ? settings.TargetFileSizeKB * 1024 : 0,
+            SkipIfSmallerThanSize = settings.SkipIfSmallerThanSize,
+            MinSizeToProcessKB = settings.MinSizeToProcessKB,
+            SkipIfSmallerThanRes = settings.SkipIfSmallerThanRes,
+            MinWidthToProcess = settings.MinWidthToProcess,
+            MinHeightToProcess = settings.MinHeightToProcess,
             IsDryRun = true
         };
 
@@ -231,7 +332,6 @@ public partial class MainForm : Form {
         dryRunCompressor.LogMessage += (s, msg) => dialog.Log(msg.Message, msg.IsError);
         dryRunCompressor.FileProcessed += (s, arg) => {
             fileTreePanel.UpdateNodeStatus(arg.FilePath, arg.Status, arg.Reason, arg.EstimatedSize);
-            fileTreePanel.RefreshList();
         };
         
         dryRunCompressor.ProcessCompleted += (s, args) => {
@@ -285,12 +385,18 @@ public partial class MainForm : Form {
             SaveAs = format,
             StripMetadata = stripMetadataCBox.Checked,
             CopyNonImages = copyNonImagesCBox.Checked,
+            CopySkippedImages = copySkippedCBox.Checked,
             CompressCompressed = compressCompressedCBox.Checked,
             OverwritePolicy = overwritePolicyCombo.SelectedIndex,
             ExplicitFiles = selectedFiles,
             TargetWidth = settings.ResizeMode == 1 ? (int)targetWidthInput.Value : 0,
             TargetHeight = settings.ResizeMode == 1 ? (int)targetHeightInput.Value : 0,
-            TargetFileSizeBytes = settings.ResizeMode == 2 ? settings.TargetFileSizeKB * 1024 : 0
+            TargetFileSizeBytes = settings.ResizeMode == 2 ? settings.TargetFileSizeKB * 1024 : 0,
+            SkipIfSmallerThanSize = settings.SkipIfSmallerThanSize,
+            MinSizeToProcessKB = settings.MinSizeToProcessKB,
+            SkipIfSmallerThanRes = settings.SkipIfSmallerThanRes,
+            MinWidthToProcess = settings.MinWidthToProcess,
+            MinHeightToProcess = settings.MinHeightToProcess
         };
 
         var dialog = new ProcessDialog();
@@ -301,7 +407,6 @@ public partial class MainForm : Form {
         compressor.LogMessage += (s, msg) => dialog.Log(msg.Message, msg.IsError);
         compressor.FileProcessed += (s, arg) => {
             fileTreePanel.UpdateNodeStatus(arg.FilePath, arg.Status, arg.Reason, arg.EstimatedSize);
-            fileTreePanel.RefreshList();
         };
 
         compressor.ProcessCompleted += (s, args) => {
