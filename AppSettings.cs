@@ -15,9 +15,17 @@ public class AppSettings {
     public long TargetFileSizeKB { get; set; } = 500;
     public bool StripMetadata { get; set; } = true;
     public bool CopyNonImages { get; set; } = false;
+    public bool CopySkippedImages { get; set; } = false;
     public int OverwritePolicy { get; set; } = 0; // 0: Suffix, 1: Overwrite, 2: Skip
     public bool CompressAlreadyCompressed { get; set; } = false;
     public int SaveAsFormat { get; set; } = 0; // JPEG, PNG, WEBP
+
+    // Skip Logic
+    public bool SkipIfSmallerThanSize { get; set; } = false;
+    public long MinSizeToProcessKB { get; set; } = 100;
+    public bool SkipIfSmallerThanRes { get; set; } = false;
+    public int MinWidthToProcess { get; set; } = 500;
+    public int MinHeightToProcess { get; set; } = 500;
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

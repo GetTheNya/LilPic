@@ -48,6 +48,14 @@ public class Compressor {
     public int MinimumFileSize { get; set; }
     public bool StripMetadata { get; set; }
     public bool CopyNonImages { get; set; }
+    public bool CopySkippedImages { get; set; }
+    
+    // Skip Logic
+    public bool SkipIfSmallerThanSize { get; set; } = false;
+    public long MinSizeToProcessKB { get; set; } = 0;
+    public bool SkipIfSmallerThanRes { get; set; } = false;
+    public int MinWidthToProcess { get; set; } = 0;
+    public int MinHeightToProcess { get; set; } = 0;
 
     public int TargetWidth { get; set; }
     public int TargetHeight { get; set; }
@@ -130,11 +138,43 @@ public class Compressor {
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
-        var filesToCompress = ExplicitFiles?.ToArray() ?? (CompressChildren
-            ? GetAllowedFilesInChild(CompressPath, CompressCompressed, MinimumFileSize)
-            : GetAllowedFiles(CompressPath, CompressCompressed, MinimumFileSize));
+        var explicitFilesArr = ExplicitFiles?.ToArray();
+        var filesToProcessList = new List<string>();
+        // Use case-insensitive set because Windows paths are case-insensitive
+        var explicitSet = explicitFilesArr != null ? new HashSet<string>(explicitFilesArr, StringComparer.OrdinalIgnoreCase) : null;
 
-        filesToProcess = filesToCompress.Length;
+        if (explicitSet != null) {
+            // Priority 1: Always include what the user selected
+            filesToProcessList.AddRange(explicitFilesArr);
+        }
+
+        // Priority 2: Scan directory for "Extras" (Non-images or skipped siblings)
+        // If no explicit selection, we also need this scan to find all images
+        if (explicitSet == null || CopyNonImages || CopySkippedImages) {
+            var allDiskFiles = CompressChildren
+                ? Directory.GetFiles(CompressPath, "*.*", SearchOption.AllDirectories)
+                : Directory.GetFiles(CompressPath, "*.*", SearchOption.TopDirectoryOnly);
+
+            foreach (var f in allDiskFiles) {
+                // If this file is already in our list (via explicit selection), skip it to avoid duplicates
+                if (explicitSet != null && explicitSet.Contains(f)) continue;
+
+                bool isImage = AllowedExtensions.ImageExtensions.Contains(Path.GetExtension(f).ToUpperInvariant());
+
+                if (explicitSet == null) {
+                    // Normal mode (no selection): Add all images, and non-images if requested
+                    if (isImage) filesToProcessList.Add(f);
+                    else if (CopyNonImages) filesToProcessList.Add(f);
+                } else {
+                    // Selection mode: Only add files that WEREN'T selected, based on copy flags
+                    if (isImage && CopySkippedImages) filesToProcessList.Add(f);
+                    else if (!isImage && CopyNonImages) filesToProcessList.Add(f);
+                }
+            }
+        }
+
+        var filesToProcessArr = filesToProcessList.ToArray();
+        filesToProcess = filesToProcessArr.Length;
         processedCount = 0;
         TotalOriginalSize = 0;
         TotalEstimatedSize = 0;
@@ -163,7 +203,7 @@ public class Compressor {
                 CancellationToken = ct
             };
 
-            await Parallel.ForEachAsync(filesToCompress, parallelOptions, async (file, token) => {
+            await Parallel.ForEachAsync(filesToProcessArr, parallelOptions, async (file, token) => {
                 int slot = -1;
                 // Assign a slot for visualization
                 lock (workerSlots) {
@@ -172,8 +212,9 @@ public class Compressor {
                 }
 
                 try {
+                    bool toCompress = explicitSet == null || explicitSet.Contains(file);
                     WorkerActivity?.Invoke(this, (slot, Path.GetFileName(file)));
-                    CompressProcess(file, format, fileExt, token);
+                    CompressProcess(file, format, fileExt, toCompress, token);
                 }
                 finally {
                     if (slot != -1) {
@@ -202,12 +243,12 @@ public class Compressor {
         }
     }
 
-    private void CompressProcess(string file, SKEncodedImageFormat format, string fileExt, CancellationToken ct) {
+    private void CompressProcess(string file, SKEncodedImageFormat format, string fileExt, bool toCompress, CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
 
         bool isImage = AllowedExtensions.ImageExtensions.Contains(Path.GetExtension(file).ToUpper());
 
-        if (isImage) {
+        if (isImage && toCompress) {
             if (!CompressCompressed) {
                 try {
                     var metadata = ImageFile.FromFile(file);
@@ -222,6 +263,26 @@ public class Compressor {
 
             try {
                 var imageData = File.ReadAllBytes(file);
+                
+                // Skip if smaller than size
+                if (SkipIfSmallerThanSize && imageData.Length < MinSizeToProcessKB * 1024) {
+                    FileProcessed?.Invoke(this, (file, "⏭ Skip", "Smaller than min size", 0));
+                    LogMessage?.Invoke(this, ($"Skipped {Path.GetFileName(file)}: Size ({Utils.FormatSize(imageData.Length)}) smaller than {MinSizeToProcessKB} KB", false));
+                    return;
+                }
+
+                // Skip if smaller than resolution
+                if (SkipIfSmallerThanRes) {
+                    using (var stream = new MemoryStream(imageData))
+                    using (var codec = SkiaSharp.SKCodec.Create(stream)) {
+                        if (codec != null && (codec.Info.Width < MinWidthToProcess || codec.Info.Height < MinHeightToProcess)) {
+                            FileProcessed?.Invoke(this, (file, "⏭ Skip", "Smaller than min res", 0));
+                            LogMessage?.Invoke(this, ($"Skipped {Path.GetFileName(file)}: Resolution ({codec.Info.Width}x{codec.Info.Height}) smaller than {MinWidthToProcess}x{MinHeightToProcess}", false));
+                            return;
+                        }
+                    }
+                }
+
                 byte[] finalData = CompressImage(imageData, Resize, Quality, format, StripMetadata, TargetWidth, TargetHeight, TargetFileSizeBytes, ct);
                 
                 lock (_lockCounterObject) {
@@ -239,7 +300,7 @@ public class Compressor {
                 FileProcessed?.Invoke(this, (file, "⚠️ Error", ex.Message, 0));
                 LogMessage?.Invoke(this, ($"Error processing {Path.GetFileName(file)}: {ex.Message}", true));
             }
-        } else if (CopyNonImages) {
+        } else if ((isImage && CopySkippedImages) || (!isImage && CopyNonImages)) {
             try {
                 var data = File.ReadAllBytes(file);
                 if (!IsDryRun) {
@@ -250,7 +311,8 @@ public class Compressor {
                         TotalEstimatedSize += data.Length;
                         ProcessedCount++;
                     }
-                    FileProcessed?.Invoke(this, (file, "✅ Copy Sim", "", (long)data.Length));
+                    string statusSuffix = isImage ? " (Image)" : "";
+                    FileProcessed?.Invoke(this, (file, "✅ Copy Sim", statusSuffix, (long)data.Length));
                 }
             } catch (Exception ex) {
                 FileProcessed?.Invoke(this, (file, "⚠️ Error", ex.Message, 0));
@@ -269,9 +331,11 @@ public class Compressor {
                 Directory.CreateDirectory(targetFolder);
 
                 string newFile = OverwritePolicy switch {
-                    1 => originalFile, // Overwrite
-                    0 => GetFileName(targetFolder, fileName, ext), // Suffix
-                    _ => Path.Combine(targetFolder, fileName + ext) // Skip
+                    1 => originalFile, // Overwrite Original Source
+                    0 => GetFileName(targetFolder, fileName, ext), // Append Suffix (1)
+                    2 => Path.Combine(targetFolder, fileName + ext), // Skip if exists (logic below)
+                    3 => Path.Combine(targetFolder, fileName + ext), // Overwrite Target
+                    _ => Path.Combine(targetFolder, fileName + ext)
                 };
 
                 if (OverwritePolicy == 2 && File.Exists(newFile)) {
@@ -280,7 +344,9 @@ public class Compressor {
                 }
 
                 File.WriteAllBytes(newFile, data);
-                FileProcessed?.Invoke(this, (originalFile, "✅ Done", "", (long)data.Length));
+                bool isImage = AllowedExtensions.ImageExtensions.Contains(Path.GetExtension(originalFile).ToUpper());
+                string status = isImage && Path.GetExtension(originalFile).Equals(ext, StringComparison.OrdinalIgnoreCase) ? "✅ Copied" : "✅ Done";
+                FileProcessed?.Invoke(this, (originalFile, status, "", (long)data.Length));
             }
         } catch (Exception ex) {
             FileProcessed?.Invoke(this, (originalFile, "⚠️ Error", ex.Message, 0));

@@ -9,7 +9,10 @@ public class FileNode {
     public string Resolution { get; set; } = "—";
     public bool IsImage { get; set; }
     public bool IsChecked { get; set; } = true;
+    public bool IsManuallyUnchecked { get; set; }
     public bool AlreadyCompressed { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
     
     // Status during/after run
     public string Status { get; set; } = ""; // ✅ Done, ⚠️ Error, ⏭ Skip, etc.
