@@ -12,6 +12,8 @@ public partial class ProcessDialog : Form {
     private RichTextBox logBox;
     private FlowLayoutPanel workerPanel;
 
+    public bool IsDryRun { get; set; }
+
     public ProcessDialog() {
         InitializeComponent();
     }
@@ -19,13 +21,22 @@ public partial class ProcessDialog : Form {
     public void UpdateProgress(int completed, int allCount) {
         if (IsDisposed || !IsHandleCreated) return;
         int percentage = allCount > 0 ? (completed * 100) / allCount : 0;
-        Invoke(new MethodInvoker(() => { progressBar1.Value = percentage; }));
-        Invoke(new MethodInvoker(() => { label1.Text = $"Completed {completed} of {allCount}"; }));
+        
+        // Use BeginInvoke for non-blocking UI updates
+        BeginInvoke(new MethodInvoker(() => { 
+            if (IsDisposed) return;
+            progressBar1.Value = percentage;
+            string prefix = IsDryRun ? "Estimating" : "Completed";
+            label1.Text = $"{prefix} {completed} of {allCount}"; 
+            if (IsDryRun) this.Text = "Dry Run - Analyzing Images...";
+        }));
     }
 
     public void UpdateWorkerSlot(int slot, string fileName) {
-        if (IsDisposed || !IsHandleCreated || slot < 0 || slot >= workerLabels.Length) return;
-        Invoke(new MethodInvoker(() => {
+        if (IsDisposed || !IsHandleCreated || slot < 0 || slot >= (workerLabels?.Length ?? 0)) return;
+        
+        BeginInvoke(new MethodInvoker(() => {
+            if (IsDisposed || slot >= (workerLabels?.Length ?? 0)) return;
             workerLabels[slot].Text = string.IsNullOrEmpty(fileName) ? "[Idle]" : $"[{slot + 1}] {fileName}";
             workerLabels[slot].ForeColor = string.IsNullOrEmpty(fileName) ? Color.Gray : Color.Black;
         }));
@@ -33,7 +44,9 @@ public partial class ProcessDialog : Form {
 
     public void Log(string message, bool isError = false) {
         if (IsDisposed || !IsHandleCreated) return;
-        Invoke(new MethodInvoker(() => {
+        
+        BeginInvoke(new MethodInvoker(() => {
+            if (IsDisposed) return;
             logBox.SelectionStart = logBox.TextLength;
             logBox.SelectionLength = 0;
             logBox.SelectionColor = isError ? Color.Red : Color.Black;
@@ -44,7 +57,9 @@ public partial class ProcessDialog : Form {
 
     public void ProcessCompleted() {
         if (IsDisposed || !IsHandleCreated) return;
-        Invoke(new MethodInvoker(() => {
+        
+        BeginInvoke(new MethodInvoker(() => {
+            if (IsDisposed) return;
             CanClose = true;
             Close();
         }));
@@ -55,6 +70,8 @@ public partial class ProcessDialog : Form {
 
         if (e.CloseReason == CloseReason.UserClosing && !CanClose) {
             e.Cancel = true;
+            // Trigger cancel action if user tries to close manually
+            button1_Click(this, EventArgs.Empty);
         }
     }
 
