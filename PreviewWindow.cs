@@ -27,6 +27,8 @@ public class PreviewWindow : Form {
     private Point lastMousePos;
     private bool isSideBySide = false;
 
+    private bool isLoading = true;
+
     public PreviewWindow(string filePath, int quality, int resizePercent, SKEncodedImageFormat format, 
                          bool stripMetadata, int targetWidth, int targetHeight, long targetFileSize) {
         this.Text = $"Preview: {Path.GetFileName(filePath)}";
@@ -34,18 +36,29 @@ public class PreviewWindow : Form {
         this.StartPosition = FormStartPosition.CenterParent;
         this.DoubleBuffered = true;
 
-        try {
-            var data = File.ReadAllBytes(filePath);
-            originalBitmap = SKBitmap.Decode(data);
-            
-            var compressedBytes = Compressor.CompressImage(data, resizePercent, quality, format, stripMetadata, targetWidth, targetHeight, targetFileSize);
-            compressedBitmap = SKBitmap.Decode(compressedBytes);
+        InitializeUI(0, 0);
+        
+        // Background loading
+        Task.Run(() => {
+            try {
+                var data = File.ReadAllBytes(filePath);
+                originalBitmap = SKBitmap.Decode(data);
+                
+                var compressedBytes = Compressor.CompressImage(data, resizePercent, quality, format, stripMetadata, targetWidth, targetHeight, targetFileSize);
+                compressedBitmap = SKBitmap.Decode(compressedBytes);
 
-            InitializeUI(data.Length, compressedBytes.Length);
-        } catch (Exception ex) {
-            MessageBox.Show($"Failed to generate preview: {ex.Message}");
-            this.Close();
-        }
+                this.Invoke(new Action(() => {
+                    isLoading = false;
+                    infoLabel.Text = $"Original: {Utils.FormatSize(data.Length)} ({originalBitmap.Width}x{originalBitmap.Height})   ➜   Compressed: ~{Utils.FormatSize(compressedBytes.Length)} ({compressedBitmap.Width}x{compressedBitmap.Height})";
+                    previewControl.Invalidate();
+                }));
+            } catch (Exception ex) {
+                this.Invoke(new Action(() => {
+                    MessageBox.Show($"Failed to generate preview: {ex.Message}");
+                    this.Close();
+                }));
+            }
+        });
     }
 
     private void InitializeUI(long originalSize, long compressedSize) {
@@ -90,7 +103,7 @@ public class PreviewWindow : Form {
             Dock = DockStyle.Bottom, 
             Height = 30, 
             TextAlign = ContentAlignment.MiddleCenter,
-            Text = $"Original: {FormatSize(originalSize)} ({originalBitmap.Width}x{originalBitmap.Height})   ➜   Compressed: ~{FormatSize(compressedSize)} ({compressedBitmap.Width}x{compressedBitmap.Height})"
+            Text = "Loading comparison images..."
         };
         this.Controls.Add(infoLabel);
 
@@ -176,7 +189,18 @@ public class PreviewWindow : Form {
         var canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.DarkGray);
 
-        if (originalBitmap == null || compressedBitmap == null) return;
+        if (isLoading || originalBitmap == null || compressedBitmap == null) {
+            using var paint = new SKPaint { 
+                Color = SKColors.White, 
+                IsAntialias = true
+            };
+#pragma warning disable CS0618
+            paint.TextAlign = SKTextAlign.Center;
+#pragma warning restore CS0618
+            using var font = new SKFont(SKTypeface.Default, 24);
+            canvas.DrawText("Calculating Preview...", e.Info.Width / 2f, e.Info.Height / 2f, font, paint);
+            return;
+        }
 
         if (isSideBySide) {
             DrawSideBySide(canvas, e.Info);
@@ -241,11 +265,6 @@ public class PreviewWindow : Form {
         canvas.DrawText("COMPRESSED", halfWidth + 10, 30, font, textPaint);
     }
 
-    private string FormatSize(long bytes) {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-        return $"{bytes / (1024.0 * 1024.0):F1} MB";
-    }
 
     protected override void Dispose(bool disposing) {
         if (disposing) {

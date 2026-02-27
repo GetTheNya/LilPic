@@ -76,6 +76,8 @@ public class Compressor {
     public event EventHandler<ProcessArgs> ProcessCanceled;
     public event EventHandler<ProcessArgs> ProcessCompleted;
     public event EventHandler<(int Slot, string FileName)> WorkerActivity;
+    public event EventHandler<(string FilePath, string Status, string Reason, long EstimatedSize)> FileProcessed;
+    public event EventHandler<(string Message, bool IsError)> LogMessage;
 
     private CancellationTokenSource _cts;
 
@@ -133,9 +135,12 @@ public class Compressor {
             : GetAllowedFiles(CompressPath, CompressCompressed, MinimumFileSize));
 
         filesToProcess = filesToCompress.Length;
-        ProcessedCount = 0;
+        processedCount = 0;
         TotalOriginalSize = 0;
         TotalEstimatedSize = 0;
+
+        string mode = IsDryRun ? "Dry Run" : "Compression";
+        LogMessage?.Invoke(this, ($"Starting {mode} of {filesToProcess} files...", false));
 
         if (!IsDryRun) Directory.CreateDirectory(SavePath);
 
@@ -179,15 +184,20 @@ public class Compressor {
             });
 
             if (ct.IsCancellationRequested) {
+                LogMessage?.Invoke(this, ("Operation canceled by user.", true));
                 ProcessCanceled?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
             } else {
+                string finishMode = IsDryRun ? "Simulation" : "Processing";
+                LogMessage?.Invoke(this, ($"{finishMode} completed. {processedCount} files processed.", false));
                 ProcessCompleted?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
             }
         }
         catch (OperationCanceledException) {
+            LogMessage?.Invoke(this, ("Operation canceled.", true));
             ProcessCanceled?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
         }
-        catch (Exception) {
+        catch (Exception ex) {
+            LogMessage?.Invoke(this, ($"Error: {ex.Message}", true));
             ProcessCompleted?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
         }
     }
@@ -203,34 +213,47 @@ public class Compressor {
                     var metadata = ImageFile.FromFile(file);
                     var desc = metadata.Properties.Get<ExifAscii>(ExifTag.ImageDescription);
                     if (desc != null && desc.Value.Contains("compressed", StringComparison.OrdinalIgnoreCase)) {
+                        FileProcessed?.Invoke(this, (file, "⏭ Skip", "Already compressed", 0));
+                        LogMessage?.Invoke(this, ($"Skipped {Path.GetFileName(file)}: Already compressed by tool.", false));
                         return; // Skip already compressed
                     }
                 } catch { }
             }
 
-            var imageData = File.ReadAllBytes(file);
-            byte[] finalData = CompressImage(imageData, Resize, Quality, format, StripMetadata, TargetWidth, TargetHeight, TargetFileSizeBytes, ct);
-            
-            lock (_lockCounterObject) {
-                TotalOriginalSize += imageData.Length;
-                TotalEstimatedSize += finalData.Length;
-            }
+            try {
+                var imageData = File.ReadAllBytes(file);
+                byte[] finalData = CompressImage(imageData, Resize, Quality, format, StripMetadata, TargetWidth, TargetHeight, TargetFileSizeBytes, ct);
+                
+                lock (_lockCounterObject) {
+                    TotalOriginalSize += imageData.Length;
+                    TotalEstimatedSize += finalData.Length;
+                }
 
-            if (!IsDryRun) {
-                SaveToFile(file, finalData, fileExt);
-            } else {
-                lock (_lockCounterObject) ProcessedCount++;
+                if (!IsDryRun) {
+                    SaveToFile(file, finalData, fileExt);
+                } else {
+                    lock (_lockCounterObject) ProcessedCount++;
+                    FileProcessed?.Invoke(this, (file, "✅ Sim", "", (long)finalData.Length));
+                }
+            } catch (Exception ex) {
+                FileProcessed?.Invoke(this, (file, "⚠️ Error", ex.Message, 0));
+                LogMessage?.Invoke(this, ($"Error processing {Path.GetFileName(file)}: {ex.Message}", true));
             }
         } else if (CopyNonImages) {
-            var data = File.ReadAllBytes(file);
-            if (!IsDryRun) {
-                SaveToFile(file, data, Path.GetExtension(file));
-            } else {
-                lock (_lockCounterObject) {
-                    TotalOriginalSize += data.Length;
-                    TotalEstimatedSize += data.Length;
-                    ProcessedCount++;
+            try {
+                var data = File.ReadAllBytes(file);
+                if (!IsDryRun) {
+                    SaveToFile(file, data, Path.GetExtension(file));
+                } else {
+                    lock (_lockCounterObject) {
+                        TotalOriginalSize += data.Length;
+                        TotalEstimatedSize += data.Length;
+                        ProcessedCount++;
+                    }
+                    FileProcessed?.Invoke(this, (file, "✅ Copy Sim", "", (long)data.Length));
                 }
+            } catch (Exception ex) {
+                FileProcessed?.Invoke(this, (file, "⚠️ Error", ex.Message, 0));
             }
         }
     }
@@ -240,19 +263,27 @@ public class Compressor {
         var fileName = Path.GetFileNameWithoutExtension(originalFile);
         var relativeDir = filePath.Replace(CompressPath, "").TrimStart(Path.DirectorySeparatorChar);
 
-        lock (_lockFileNameObject) {
-            string targetFolder = string.IsNullOrEmpty(relativeDir) ? SavePath : Path.Combine(SavePath, relativeDir);
-            Directory.CreateDirectory(targetFolder);
+        try {
+            lock (_lockFileNameObject) {
+                string targetFolder = string.IsNullOrEmpty(relativeDir) ? SavePath : Path.Combine(SavePath, relativeDir);
+                Directory.CreateDirectory(targetFolder);
 
-            string newFile = OverwritePolicy switch {
-                1 => originalFile, // Overwrite
-                0 => GetFileName(targetFolder, fileName, ext), // Suffix
-                _ => Path.Combine(targetFolder, fileName + ext) // Skip
-            };
+                string newFile = OverwritePolicy switch {
+                    1 => originalFile, // Overwrite
+                    0 => GetFileName(targetFolder, fileName, ext), // Suffix
+                    _ => Path.Combine(targetFolder, fileName + ext) // Skip
+                };
 
-            if (OverwritePolicy == 2 && File.Exists(newFile)) return;
+                if (OverwritePolicy == 2 && File.Exists(newFile)) {
+                    FileProcessed?.Invoke(this, (originalFile, "⏭ Skip", "File exists", 0));
+                    return;
+                }
 
-            File.WriteAllBytes(newFile, data);
+                File.WriteAllBytes(newFile, data);
+                FileProcessed?.Invoke(this, (originalFile, "✅ Done", "", (long)data.Length));
+            }
+        } catch (Exception ex) {
+            FileProcessed?.Invoke(this, (originalFile, "⚠️ Error", ex.Message, 0));
         }
 
         lock (_lockCounterObject) {
