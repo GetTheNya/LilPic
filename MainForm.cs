@@ -45,6 +45,7 @@ public partial class MainForm : Form {
         overwritePolicyCombo.SelectedIndex = settings.OverwritePolicy;
         stripMetadataCBox.Checked = settings.StripMetadata;
         copyNonImagesCBox.Checked = settings.CopyNonImages;
+        compressCompressedCBox.Checked = settings.CompressAlreadyCompressed;
         
         switch (settings.SaveAsFormat) {
             case 0: saveJPEGRButton.Checked = true; break;
@@ -69,6 +70,7 @@ public partial class MainForm : Form {
         settings.OverwritePolicy = overwritePolicyCombo.SelectedIndex;
         settings.StripMetadata = stripMetadataCBox.Checked;
         settings.CopyNonImages = copyNonImagesCBox.Checked;
+        settings.CompressAlreadyCompressed = compressCompressedCBox.Checked;
         
         settings.TargetWidth = (int)targetWidthInput.Value;
         settings.TargetHeight = (int)targetHeightInput.Value;
@@ -100,6 +102,7 @@ public partial class MainForm : Form {
         
         stripMetadataCBox.CheckedChanged += (s, e) => SaveSettings();
         copyNonImagesCBox.CheckedChanged += (s, e) => SaveSettings();
+        compressCompressedCBox.CheckedChanged += (s, e) => SaveSettings();
         overwritePolicyCombo.SelectedIndexChanged += (s, e) => SaveSettings();
         
         saveJPEGRButton.CheckedChanged += (s, e) => SaveSettings();
@@ -109,6 +112,11 @@ public partial class MainForm : Form {
         targetWidthInput.ValueChanged += (s, e) => SaveSettings();
         targetHeightInput.ValueChanged += (s, e) => SaveSettings();
         targetSizeInput.TextChanged += (s, e) => SaveSettings();
+
+        chooseFolderBtn.Click += chooseFolderBtn_Click;
+        chooseSaveFolderBtn.Click += chooseSaveFolderBtn_Click;
+        dryRunBtn.Click += dryRunBtn_Click;
+        compressBtn.Click += compressBtn_Click;
 
         fileTreePanel.FileDoubleClicked += (s, filePath) => {
             var format = saveJPEGRButton.Checked ? SKEncodedImageFormat.Jpeg :
@@ -142,24 +150,36 @@ public partial class MainForm : Form {
         suppressSettingsUpdate = true;
         switch (presetsCombo.SelectedIndex) {
             case 1: // Web Optimized
+                resizeModeCombo.SelectedIndex = 0;
                 qualityNumeric.Value = 75;
                 resizeNumeric.Value = 80;
                 saveJPEGRButton.Checked = true;
                 stripMetadataCBox.Checked = true;
                 break;
             case 2: // High Quality (PNG)
+                resizeModeCombo.SelectedIndex = 0;
                 qualityNumeric.Value = 90;
                 resizeNumeric.Value = 100;
                 savePNGRButton.Checked = true;
                 stripMetadataCBox.Checked = false;
                 break;
             case 3: // Max Compression (WEBP)
+                resizeModeCombo.SelectedIndex = 0;
                 qualityNumeric.Value = 60;
                 resizeNumeric.Value = 70;
                 saveWEBPRButton.Checked = true;
                 stripMetadataCBox.Checked = true;
                 break;
+            case 4: // Social Media (Small)
+                resizeModeCombo.SelectedIndex = 1; // Target Res
+                targetWidthInput.Value = 1080;
+                targetHeightInput.Value = 1080;
+                qualityNumeric.Value = 80;
+                saveJPEGRButton.Checked = true;
+                stripMetadataCBox.Checked = true;
+                break;
         }
+        UpdateResizeModeUI();
         suppressSettingsUpdate = false;
         SaveSettings();
     }
@@ -179,14 +199,61 @@ public partial class MainForm : Form {
     }
 
     private void dryRunBtn_Click(object sender, EventArgs e) {
-        var selected = fileTreePanel.GetSelectedFiles();
-        if (selected.Count == 0) {
-            MessageBox.Show("No files selected!");
+        var selectedFiles = fileTreePanel.GetSelectedFiles();
+        if (selectedFiles.Count == 0) {
+            MessageBox.Show("Please select files in the explorer first.");
             return;
         }
+
+        SaveAs format = saveJPEGRButton.Checked ? SaveAs.JPEG : 
+                        savePNGRButton.Checked ? SaveAs.PNG : SaveAs.WEBP;
+
+        var dryRunCompressor = new Compressor(directoryPathInput.Text) {
+            SavePath = savePathInput.Text, // Not used but needed for constructor logic
+            Quality = (int)qualityNumeric.Value,
+            Resize = (int)resizeNumeric.Value,
+            SaveAs = format,
+            StripMetadata = stripMetadataCBox.Checked,
+            CopyNonImages = copyNonImagesCBox.Checked,
+            OverwritePolicy = overwritePolicyCombo.SelectedIndex,
+            ExplicitFiles = selectedFiles,
+            TargetWidth = settings.ResizeMode == 1 ? (int)targetWidthInput.Value : 0,
+            TargetHeight = settings.ResizeMode == 1 ? (int)targetHeightInput.Value : 0,
+            TargetFileSizeBytes = settings.ResizeMode == 2 ? settings.TargetFileSizeKB * 1024 : 0,
+            IsDryRun = true
+        };
+
+        var dialog = new ProcessDialog { IsDryRun = true };
+        dialog.CancelAction = () => dryRunCompressor.Cancel();
+
+        dryRunCompressor.ProcessEvent += (s, args) => dialog.UpdateProgress(args.ProcessedFiles, args.AllFiles);
+        dryRunCompressor.WorkerActivity += (s, act) => dialog.UpdateWorkerSlot(act.Slot, act.FileName);
         
-        long totalSize = selected.Sum(f => new FileInfo(f).Length);
-        MessageBox.Show($"Selected {selected.Count} files.\nTotal Size: {totalSize / 1024 / 1024} MB\nEstimated Savings: ~50-80% based on settings.");
+        dryRunCompressor.ProcessCompleted += (s, args) => {
+            dialog.ProcessCompleted();
+            this.Invoke(new MethodInvoker(() => {
+                long originalSize = dryRunCompressor.TotalOriginalSize;
+                long estimatedSize = dryRunCompressor.TotalEstimatedSize;
+                long savings = Math.Max(0, originalSize - estimatedSize);
+                double percent = originalSize > 0 ? (savings * 100.0) / originalSize : 0;
+
+                MessageBox.Show(
+                    $"Dry Run Finished!\n\n" +
+                    $"Images Processed: {args.ProcessedFiles}\n" +
+                    $"Original Size: {Utils.FormatSize(originalSize)}\n" +
+                    $"Estimated Size: {Utils.FormatSize(estimatedSize)}\n" +
+                    $"Potential Savings: {Utils.FormatSize(savings)} ({percent:F1}%)",
+                    "Dry Run Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }));
+        };
+
+        dryRunCompressor.ProcessCanceled += (s, args) => {
+            dialog.ProcessCompleted();
+            this.Invoke(new MethodInvoker(() => MessageBox.Show("Dry Run Canceled.")));
+        };
+
+        dryRunCompressor.CompressAsync();
+        dialog.ShowDialog();
     }
 
     private void compressBtn_Click(object sender, EventArgs e) {
@@ -211,6 +278,7 @@ public partial class MainForm : Form {
             SaveAs = format,
             StripMetadata = stripMetadataCBox.Checked,
             CopyNonImages = copyNonImagesCBox.Checked,
+            CompressCompressed = compressCompressedCBox.Checked,
             OverwritePolicy = overwritePolicyCombo.SelectedIndex,
             ExplicitFiles = selectedFiles,
             TargetWidth = settings.ResizeMode == 1 ? (int)targetWidthInput.Value : 0,

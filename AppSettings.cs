@@ -16,6 +16,7 @@ public class AppSettings {
     public bool StripMetadata { get; set; } = true;
     public bool CopyNonImages { get; set; } = false;
     public int OverwritePolicy { get; set; } = 0; // 0: Suffix, 1: Overwrite, 2: Skip
+    public bool CompressAlreadyCompressed { get; set; } = false;
     public int SaveAsFormat { get; set; } = 0; // JPEG, PNG, WEBP
 
     private static string SettingsPath => Path.Combine(

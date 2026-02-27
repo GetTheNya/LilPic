@@ -54,6 +54,9 @@ public class Compressor {
     public long TargetFileSizeBytes { get; set; }
 
     public IEnumerable<string> ExplicitFiles { get; set; }
+    public bool IsDryRun { get; set; }
+    public long TotalOriginalSize { get; private set; }
+    public long TotalEstimatedSize { get; private set; }
 
     private int processedCount = 0;
     private int filesToProcess = 0;
@@ -114,14 +117,14 @@ public class Compressor {
     }
 
     public void CompressAsync() {
-        Task.Run(StartCompress);
+        Task.Run(async () => await StartCompress());
     }
 
     public void Compress() {
-        StartCompress();
+        StartCompress().GetAwaiter().GetResult();
     }
 
-    private void StartCompress() {
+    private async Task StartCompress() {
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
@@ -131,8 +134,10 @@ public class Compressor {
 
         filesToProcess = filesToCompress.Length;
         ProcessedCount = 0;
+        TotalOriginalSize = 0;
+        TotalEstimatedSize = 0;
 
-        Directory.CreateDirectory(SavePath);
+        if (!IsDryRun) Directory.CreateDirectory(SavePath);
 
         SKEncodedImageFormat format = SaveAs switch {
             SaveAs.PNG => SKEncodedImageFormat.Png,
@@ -148,29 +153,30 @@ public class Compressor {
 
         try {
             var workerSlots = new bool[Environment.ProcessorCount];
-            var tasks = filesToCompress.Select(async (file) => {
-                int slot = -1;
-                await _semaphore.WaitAsync(ct);
-                try {
-                    // Assign a slot for visualization
-                    lock (workerSlots) {
-                        slot = Array.IndexOf(workerSlots, false);
-                        if (slot != -1) workerSlots[slot] = true;
-                    }
+            var parallelOptions = new ParallelOptions {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+                CancellationToken = ct
+            };
 
+            await Parallel.ForEachAsync(filesToCompress, parallelOptions, async (file, token) => {
+                int slot = -1;
+                // Assign a slot for visualization
+                lock (workerSlots) {
+                    slot = Array.IndexOf(workerSlots, false);
+                    if (slot != -1) workerSlots[slot] = true;
+                }
+
+                try {
                     WorkerActivity?.Invoke(this, (slot, Path.GetFileName(file)));
-                    CompressProcess(file, format, fileExt, ct);
+                    CompressProcess(file, format, fileExt, token);
                 }
                 finally {
                     if (slot != -1) {
                         lock (workerSlots) workerSlots[slot] = false;
                         WorkerActivity?.Invoke(this, (slot, ""));
                     }
-                    _semaphore.Release();
                 }
-            }).ToArray();
-
-            Task.WaitAll(tasks);
+            });
 
             if (ct.IsCancellationRequested) {
                 ProcessCanceled?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
@@ -178,29 +184,60 @@ public class Compressor {
                 ProcessCompleted?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
             }
         }
-        catch (AggregateException ex) {
-            if (ex.InnerExceptions.Any(e => e is OperationCanceledException))
-                ProcessCanceled?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
+        catch (OperationCanceledException) {
+            ProcessCanceled?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
+        }
+        catch (Exception) {
+            ProcessCompleted?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
         }
     }
 
     private void CompressProcess(string file, SKEncodedImageFormat format, string fileExt, CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
 
-        byte[] finalData;
         bool isImage = AllowedExtensions.ImageExtensions.Contains(Path.GetExtension(file).ToUpper());
 
         if (isImage) {
-            var imageData = File.ReadAllBytes(file);
-            finalData = CompressImage(imageData, Resize, Quality, format, StripMetadata, TargetWidth, TargetHeight, TargetFileSizeBytes, ct);
-        } else if (CopyNonImages) {
-            finalData = File.ReadAllBytes(file);
-        } else {
-            return; // Skip
-        }
+            if (!CompressCompressed) {
+                try {
+                    var metadata = ImageFile.FromFile(file);
+                    var desc = metadata.Properties.Get<ExifAscii>(ExifTag.ImageDescription);
+                    if (desc != null && desc.Value.Contains("compressed", StringComparison.OrdinalIgnoreCase)) {
+                        return; // Skip already compressed
+                    }
+                } catch { }
+            }
 
-        var filePath = Path.GetDirectoryName(file);
-        var fileName = Path.GetFileNameWithoutExtension(file);
+            var imageData = File.ReadAllBytes(file);
+            byte[] finalData = CompressImage(imageData, Resize, Quality, format, StripMetadata, TargetWidth, TargetHeight, TargetFileSizeBytes, ct);
+            
+            lock (_lockCounterObject) {
+                TotalOriginalSize += imageData.Length;
+                TotalEstimatedSize += finalData.Length;
+            }
+
+            if (!IsDryRun) {
+                SaveToFile(file, finalData, fileExt);
+            } else {
+                lock (_lockCounterObject) ProcessedCount++;
+            }
+        } else if (CopyNonImages) {
+            var data = File.ReadAllBytes(file);
+            if (!IsDryRun) {
+                SaveToFile(file, data, Path.GetExtension(file));
+            } else {
+                lock (_lockCounterObject) {
+                    TotalOriginalSize += data.Length;
+                    TotalEstimatedSize += data.Length;
+                    ProcessedCount++;
+                }
+            }
+        }
+    }
+
+    private void SaveToFile(string originalFile, byte[] data, string ext) {
+        var filePath = Path.GetDirectoryName(originalFile);
+        var fileName = Path.GetFileNameWithoutExtension(originalFile);
         var relativeDir = filePath.Replace(CompressPath, "").TrimStart(Path.DirectorySeparatorChar);
 
         lock (_lockFileNameObject) {
@@ -208,14 +245,14 @@ public class Compressor {
             Directory.CreateDirectory(targetFolder);
 
             string newFile = OverwritePolicy switch {
-                1 => file, // Overwrite
-                0 => GetFileName(targetFolder, fileName, fileExt), // Suffix
-                _ => Path.Combine(targetFolder, fileName + fileExt) // Skip (handled below)
+                1 => originalFile, // Overwrite
+                0 => GetFileName(targetFolder, fileName, ext), // Suffix
+                _ => Path.Combine(targetFolder, fileName + ext) // Skip
             };
 
             if (OverwritePolicy == 2 && File.Exists(newFile)) return;
 
-            File.WriteAllBytes(newFile, finalData);
+            File.WriteAllBytes(newFile, data);
         }
 
         lock (_lockCounterObject) {
@@ -298,7 +335,7 @@ public class Compressor {
                     var fileMetaData = ImageFile.FromFile(file);
                     var imageDescription = fileMetaData.Properties.Get<ExifAscii>(ExifTag.ImageDescription);
                     if (imageDescription != null) {
-                        if (imageDescription.Value.Contains("compressed")) return false;
+                        if (imageDescription.Value.Contains("compressed", StringComparison.OrdinalIgnoreCase)) return false;
                     }
                 }
                 catch (Exception) {
