@@ -41,12 +41,19 @@ public class Compressor {
         }
     }
 
-    public bool CompressChild { get; set; }
-    public bool Overwrite { get; set; }
+    public bool CompressChildren { get; set; }
+    public int OverwritePolicy { get; set; } // 0: Suffix, 1: Overwrite, 2: Skip
     public bool CompressCompressed { get; set; }
     public SaveAs SaveAs { get; set; }
     public int MinimumFileSize { get; set; }
     public bool StripMetadata { get; set; }
+    public bool CopyNonImages { get; set; }
+
+    public int TargetWidth { get; set; }
+    public int TargetHeight { get; set; }
+    public long TargetFileSizeBytes { get; set; }
+
+    public IEnumerable<string> ExplicitFiles { get; set; }
 
     private int processedCount = 0;
     private int filesToProcess = 0;
@@ -65,14 +72,14 @@ public class Compressor {
     public event EventHandler<ProcessArgs> ProcessEvent;
     public event EventHandler<ProcessArgs> ProcessCanceled;
     public event EventHandler<ProcessArgs> ProcessCompleted;
-    public event EventHandler<string> ErrorOccurred;
+    public event EventHandler<(int Slot, string FileName)> WorkerActivity;
 
-    private bool _operationCanRun = true;
+    private CancellationTokenSource _cts;
 
     private readonly SemaphoreSlim _semaphore;
 
     public void Cancel() {
-        _operationCanRun = false;
+        _cts?.Cancel();
     }
 
     public Compressor(string compressPath, string savePath, int quality, int resize, bool compressChild, bool overwrite,
@@ -81,8 +88,8 @@ public class Compressor {
         SavePath = savePath;
         Quality = quality;
         Resize = resize;
-        CompressChild = compressChild;
-        Overwrite = overwrite;
+        CompressChildren = compressChild;
+        OverwritePolicy = overwrite ? 1 : 0;
         CompressCompressed = compressCompressed;
         SaveAs = saveAs;
         MinimumFileSize = minimumFileSize;
@@ -96,8 +103,8 @@ public class Compressor {
         SavePath = Path.Combine(CompressPath, "Compressed");
         Quality = 80;
         Resize = 80;
-        CompressChild = false;
-        Overwrite = false;
+        CompressChildren = false;
+        OverwritePolicy = 0;
         CompressCompressed = false;
         SaveAs = SaveAs.JPEG;
         MinimumFileSize = -1;
@@ -115,58 +122,57 @@ public class Compressor {
     }
 
     private void StartCompress() {
-        var filesToCompress = CompressChild
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        var filesToCompress = ExplicitFiles?.ToArray() ?? (CompressChildren
             ? GetAllowedFilesInChild(CompressPath, CompressCompressed, MinimumFileSize)
-            : GetAllowedFiles(CompressPath, CompressCompressed, MinimumFileSize);
+            : GetAllowedFiles(CompressPath, CompressCompressed, MinimumFileSize));
 
         filesToProcess = filesToCompress.Length;
+        ProcessedCount = 0;
 
         Directory.CreateDirectory(SavePath);
 
-        SKEncodedImageFormat format;
-        string fileExt;
-
-        switch (SaveAs) {
-            default:
-            case SaveAs.JPEG:
-                format = SKEncodedImageFormat.Jpeg;
-                fileExt = ".jpeg";
-                break;
-            case SaveAs.PNG:
-                format = SKEncodedImageFormat.Png;
-                fileExt = ".png";
-                break;
-            case SaveAs.WEBP:
-                format = SKEncodedImageFormat.Webp;
-                fileExt = ".webp";
-                break;
-        }
+        SKEncodedImageFormat format = SaveAs switch {
+            SaveAs.PNG => SKEncodedImageFormat.Png,
+            SaveAs.WEBP => SKEncodedImageFormat.Webp,
+            _ => SKEncodedImageFormat.Jpeg
+        };
+        
+        string fileExt = SaveAs switch {
+            SaveAs.PNG => ".png",
+            SaveAs.WEBP => ".webp",
+            _ => ".jpg"
+        };
 
         try {
-            Task[] tasks = new Task[filesToProcess];
+            var workerSlots = new bool[Environment.ProcessorCount];
+            var tasks = filesToCompress.Select(async (file) => {
+                int slot = -1;
+                await _semaphore.WaitAsync(ct);
+                try {
+                    // Assign a slot for visualization
+                    lock (workerSlots) {
+                        slot = Array.IndexOf(workerSlots, false);
+                        if (slot != -1) workerSlots[slot] = true;
+                    }
 
-            for (int i = 0; i < filesToProcess; i++) {
-                var file = filesToCompress[i];
-                tasks[i] = Task.Run(async () => {
-                    await _semaphore.WaitAsync();
-                    try {
-                        CompressProcess(file, format, fileExt);
+                    WorkerActivity?.Invoke(this, (slot, Path.GetFileName(file)));
+                    CompressProcess(file, format, fileExt, ct);
+                }
+                finally {
+                    if (slot != -1) {
+                        lock (workerSlots) workerSlots[slot] = false;
+                        WorkerActivity?.Invoke(this, (slot, ""));
                     }
-                    catch (OperationCanceledException) {
-                        // Handled by collective cancellation check
-                    }
-                    catch (Exception e) {
-                        ErrorOccurred?.Invoke(this, $"Error processing {Path.GetFileName(file)}: {e.Message}");
-                    }
-                    finally {
-                        _semaphore.Release();
-                    }
-                });
-            }
+                    _semaphore.Release();
+                }
+            }).ToArray();
 
             Task.WaitAll(tasks);
 
-            if (!_operationCanRun) {
+            if (ct.IsCancellationRequested) {
                 ProcessCanceled?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
             } else {
                 ProcessCompleted?.Invoke(this, new ProcessArgs(processedCount, filesToProcess));
@@ -178,42 +184,43 @@ public class Compressor {
         }
     }
 
-    private void CompressProcess(string file, SKEncodedImageFormat format, string fileExt) {
-        if (!_operationCanRun) {
-            throw new OperationCanceledException();
-        }
+    private void CompressProcess(string file, SKEncodedImageFormat format, string fileExt, CancellationToken ct) {
+        ct.ThrowIfCancellationRequested();
 
-        var imageData = File.ReadAllBytes(file);
-        var compressedImageData = CompressImage(imageData, Resize, Quality, format, StripMetadata);
+        byte[] finalData;
+        bool isImage = AllowedExtensions.ImageExtensions.Contains(Path.GetExtension(file).ToUpper());
+
+        if (isImage) {
+            var imageData = File.ReadAllBytes(file);
+            finalData = CompressImage(imageData, Resize, Quality, format, StripMetadata, TargetWidth, TargetHeight, TargetFileSizeBytes, ct);
+        } else if (CopyNonImages) {
+            finalData = File.ReadAllBytes(file);
+        } else {
+            return; // Skip
+        }
 
         var filePath = Path.GetDirectoryName(file);
         var fileName = Path.GetFileNameWithoutExtension(file);
+        var relativeDir = filePath.Replace(CompressPath, "").TrimStart(Path.DirectorySeparatorChar);
 
         lock (_lockFileNameObject) {
-            if (Overwrite) {
-                File.Delete(file);
-                var newFile = GetFileName(filePath, fileName, fileExt);
-                File.WriteAllBytes(newFile, compressedImageData);
-            } else {
-                var pathWithoutRoot = filePath.Replace(CompressPath, "");
-                Directory.CreateDirectory(SavePath + pathWithoutRoot);
-                // var newFile = Path.Combine(SavePath + pathWithoutRoot, fileName + fileExt);
-                // while (File.Exists(newFile))
-                // newFile = Path.Combine(SavePath + pathWithoutRoot, $"{fileName}(1){fileExt}");
-                var newFile = GetFileName(SavePath + pathWithoutRoot, fileName, fileExt);
-                File.WriteAllBytes(newFile, compressedImageData);
-            }
+            string targetFolder = string.IsNullOrEmpty(relativeDir) ? SavePath : Path.Combine(SavePath, relativeDir);
+            Directory.CreateDirectory(targetFolder);
+
+            string newFile = OverwritePolicy switch {
+                1 => file, // Overwrite
+                0 => GetFileName(targetFolder, fileName, fileExt), // Suffix
+                _ => Path.Combine(targetFolder, fileName + fileExt) // Skip (handled below)
+            };
+
+            if (OverwritePolicy == 2 && File.Exists(newFile)) return;
+
+            File.WriteAllBytes(newFile, finalData);
         }
 
-        int currentCount;
         lock (_lockCounterObject) {
             ProcessedCount++;
-            currentCount = ProcessedCount;
         }
-        
-        // Fire event outside the lock but with a captured value for consistency if needed, 
-        // though ProcessedCount property already fires it. 
-        // Wait, ProcessedCount property fires event. Let's make it consistent.
     }
 
     private string GetFileName(string filePath, string fileName, string fileExt) {
@@ -240,29 +247,33 @@ public class Compressor {
         return files.ToArray();
     }
 
-    private static byte[] CompressImage(byte[] imageData, int percent, int quality, SKEncodedImageFormat format, bool stripMetadata) {
-        using SKBitmap sourceBitmap = SKBitmap.Decode(imageData);
-        if (sourceBitmap == null) {
-            return imageData;
-        }
-
-        int actualWidth = sourceBitmap.Width;
-        int actualHeight = sourceBitmap.Height;
-
-        int targetWidth = Math.Max(1, (int)Math.Floor(actualWidth / 100f * percent));
-        int targetHeight = Math.Max(1, (int)Math.Floor(actualHeight / 100f * percent));
-
-        using SKBitmap resizedBitmap =
-            sourceBitmap.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default);
+    public static byte[] CompressImage(byte[] imageData, int percent, int quality, SKEncodedImageFormat format, bool stripMetadata, int targetWidth = 0, int targetHeight = 0, long targetFileSizeBytes = 0, CancellationToken ct = default) {
+        ct.ThrowIfCancellationRequested();
         
-        if (resizedBitmap == null) {
-            return imageData; // Fallback to original if resize fails
+        using SKBitmap sourceBitmap = SKBitmap.Decode(imageData);
+        if (sourceBitmap == null) return imageData;
+
+        int finalWidth, finalHeight;
+        if (targetWidth > 0 && targetHeight > 0) {
+            float ratio = Math.Min((float)targetWidth / sourceBitmap.Width, (float)targetHeight / sourceBitmap.Height);
+            finalWidth = Math.Max(1, (int)(sourceBitmap.Width * ratio));
+            finalHeight = Math.Max(1, (int)(sourceBitmap.Height * ratio));
+        } else {
+            finalWidth = Math.Max(1, (int)Math.Floor(sourceBitmap.Width / 100f * percent));
+            finalHeight = Math.Max(1, (int)Math.Floor(sourceBitmap.Height / 100f * percent));
         }
 
-        using SKData encodedData = resizedBitmap.Encode(format, quality);
-        if (encodedData == null) {
-            return imageData;
+        using SKBitmap resizedBitmap = sourceBitmap.Resize(new SKImageInfo(finalWidth, finalHeight), SKSamplingOptions.Default);
+        if (resizedBitmap == null) return imageData;
+
+        int finalQuality = quality;
+        if (targetFileSizeBytes > 0) {
+            finalQuality = ImageSizeEstimator.EstimateQuality(imageData, targetFileSizeBytes, percent, format, stripMetadata);
         }
+
+        ct.ThrowIfCancellationRequested();
+        using SKData encodedData = resizedBitmap.Encode(format, finalQuality);
+        if (encodedData == null) return imageData;
 
         if (stripMetadata || format == SKEncodedImageFormat.Webp) {
             return encodedData.ToArray();
@@ -270,14 +281,13 @@ public class Compressor {
 
         try {
             var file = ImageFile.FromBuffer(encodedData.ToArray());
-            file.Properties.Set(ExifTag.ImageDescription,
-                "Image compressed by GetTheNya`s bulk image compression tool");
+            file.Properties.Set(ExifTag.ImageDescription, "Compressed");
             using MemoryStream stream = new MemoryStream();
             file.Save(stream);
             return stream.ToArray();
         }
         catch {
-            return encodedData.ToArray(); // Return compressed but without metadata if ExifLibrary fails
+            return encodedData.ToArray();
         }
     }
 

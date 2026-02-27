@@ -1,175 +1,238 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using SkiaSharp;
 
 namespace BulkImageCompressor;
 
 public partial class MainForm : Form {
-    private readonly System.Windows.Forms.Timer _takeBackupBlinkTimer = new();
-    private CheckBox stripMetadataCBox;
+    private AppSettings settings;
+    private Compressor compressor;
+    private bool suppressSettingsUpdate = false;
 
     public MainForm() {
-        _takeBackupBlinkTimer.Interval = 500;
-        _takeBackupBlinkTimer.Enabled = false;
-        _takeBackupBlinkTimer.Tick += takeBackupBlinkTimer_Tick;
-
         InitializeComponent();
-
-        KBMKBox.SelectedIndex = 0;
-        AddStripMetadataCheckbox();
-    }
-
-    private void AddStripMetadataCheckbox() {
-        stripMetadataCBox = new CheckBox {
-            Text = "Strip EXIF Metadata (smaller files)",
-            Location = new Point(447, 46 + 25),
-            Size = new Size(250, 21),
-            Checked = true
-        };
-        groupBox1.Controls.Add(stripMetadataCBox);
+        LoadSettings();
+        SetupEvents();
         
-        // Move panel down a bit
-        panel1.Location = new Point(panel1.Location.X, panel1.Location.Y + 20);
+        // Initial state
+        UpdateResizeModeUI();
     }
 
+    private void LoadSettings() {
+        settings = AppSettings.Load();
+        suppressSettingsUpdate = true;
 
-    private void chooseFolderBtn_Click(object sender, EventArgs e) {
-        using (var fbd = new FolderBrowserDialog()) {
-            DialogResult result = fbd.ShowDialog();
+        directoryPathInput.Text = settings.LastInputFolder;
+        savePathInput.Text = settings.LastOutputFolder;
+        
+        qualityTrackBar.Minimum = 0;
+        qualityTrackBar.Maximum = 100;
+        qualityTrackBar.Value = Math.Clamp(settings.Quality, 0, 100);
+        qualityNumeric.Value = Math.Clamp(settings.Quality, 0, 100);
 
-            if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(fbd.SelectedPath)) {
-                directoryPathInput.Text = fbd.SelectedPath;
-                savePathInput.Text = $"{fbd.SelectedPath}\\Compressed";
-            }
+        resizeTrackBar.Minimum = 0;
+        resizeTrackBar.Maximum = 100;
+        resizeTrackBar.Value = Math.Clamp(settings.ResizePercent, 0, 100);
+        resizeNumeric.Value = Math.Clamp(settings.ResizePercent, 0, 100);
+        
+        resizeModeCombo.SelectedIndex = Math.Clamp(settings.ResizeMode, 0, 2);
+        overwritePolicyCombo.SelectedIndex = settings.OverwritePolicy;
+        stripMetadataCBox.Checked = settings.StripMetadata;
+        copyNonImagesCBox.Checked = settings.CopyNonImages;
+        
+        switch (settings.SaveAsFormat) {
+            case 0: saveJPEGRButton.Checked = true; break;
+            case 1: savePNGRButton.Checked = true; break;
+            case 2: saveWEBPRButton.Checked = true; break;
+        }
+
+        suppressSettingsUpdate = false;
+        
+        if (!string.IsNullOrEmpty(settings.LastInputFolder)) {
+            fileTreePanel.LoadDirectory(settings.LastInputFolder);
         }
     }
 
-    private void takeBackupBlinkTimer_Tick(object sender, EventArgs e) {
-        backupLabel.ForeColor = backupLabel.ForeColor == Color.Red ? Color.Black : Color.Red;
+    private void SaveSettings() {
+        if (suppressSettingsUpdate) return;
+        settings.LastInputFolder = directoryPathInput.Text;
+        settings.LastOutputFolder = savePathInput.Text;
+        settings.Quality = (int)qualityNumeric.Value;
+        settings.ResizePercent = (int)resizeNumeric.Value;
+        settings.ResizeMode = resizeModeCombo.SelectedIndex;
+        settings.OverwritePolicy = overwritePolicyCombo.SelectedIndex;
+        settings.StripMetadata = stripMetadataCBox.Checked;
+        settings.CopyNonImages = copyNonImagesCBox.Checked;
+        
+        settings.TargetWidth = (int)targetWidthInput.Value;
+        settings.TargetHeight = (int)targetHeightInput.Value;
+        if (long.TryParse(targetSizeInput.Text, out long kb)) settings.TargetFileSizeKB = kb;
+
+        if (saveJPEGRButton.Checked) settings.SaveAsFormat = 0;
+        else if (savePNGRButton.Checked) settings.SaveAsFormat = 1;
+        else if (saveWEBPRButton.Checked) settings.SaveAsFormat = 2;
+
+        settings.Save();
     }
 
+    private void SetupEvents() {
+        presetsCombo.SelectedIndexChanged += PresetsCombo_SelectedIndexChanged;
+        resizeModeCombo.SelectedIndexChanged += (s, e) => { UpdateResizeModeUI(); SaveSettings(); };
+        
+        qualityTrackBar.Scroll += (s, e) => { qualityNumeric.Value = qualityTrackBar.Value; SaveSettings(); };
+        qualityNumeric.ValueChanged += (s, e) => { qualityTrackBar.Value = (int)qualityNumeric.Value; SaveSettings(); };
+        
+        resizeTrackBar.Scroll += (s, e) => { resizeNumeric.Value = resizeTrackBar.Value; SaveSettings(); };
+        resizeNumeric.ValueChanged += (s, e) => { resizeTrackBar.Value = (int)resizeNumeric.Value; SaveSettings(); };
 
-    private void overrideCBox_CheckedChanged(object sender, EventArgs e) {
-        backupLabel.Visible = overrideCBox.Checked;
-        _takeBackupBlinkTimer.Enabled = overrideCBox.Checked;
-        savePathInput.Enabled = !overrideCBox.Checked;
-        if (overrideCBox.Checked)
-            savePathInput.Text = "Overwriting!";
-        else
-            savePathInput.Text = Directory.Exists(directoryPathInput.Text)
-                ? $"{directoryPathInput.Text}\\Compressed"
-                : "";
+        directoryPathInput.TextChanged += (s, e) => { 
+            if (Directory.Exists(directoryPathInput.Text)) fileTreePanel.LoadDirectory(directoryPathInput.Text);
+            SaveSettings(); 
+        };
+        
+        savePathInput.TextChanged += (s, e) => SaveSettings();
+        
+        stripMetadataCBox.CheckedChanged += (s, e) => SaveSettings();
+        copyNonImagesCBox.CheckedChanged += (s, e) => SaveSettings();
+        overwritePolicyCombo.SelectedIndexChanged += (s, e) => SaveSettings();
+        
+        saveJPEGRButton.CheckedChanged += (s, e) => SaveSettings();
+        savePNGRButton.CheckedChanged += (s, e) => SaveSettings();
+        saveWEBPRButton.CheckedChanged += (s, e) => SaveSettings();
+
+        targetWidthInput.ValueChanged += (s, e) => SaveSettings();
+        targetHeightInput.ValueChanged += (s, e) => SaveSettings();
+        targetSizeInput.TextChanged += (s, e) => SaveSettings();
+
+        fileTreePanel.FileDoubleClicked += (s, filePath) => {
+            var format = saveJPEGRButton.Checked ? SKEncodedImageFormat.Jpeg :
+                         savePNGRButton.Checked ? SKEncodedImageFormat.Png : SKEncodedImageFormat.Webp;
+            
+            int targetW = resizeModeCombo.SelectedIndex == 1 ? (int)targetWidthInput.Value : 0;
+            int targetH = resizeModeCombo.SelectedIndex == 1 ? (int)targetHeightInput.Value : 0;
+            long targetSizeBytes = resizeModeCombo.SelectedIndex == 2 ? settings.TargetFileSizeKB * 1024 : 0;
+
+            var preview = new PreviewWindow(filePath, (int)qualityNumeric.Value, (int)resizeNumeric.Value, 
+                                          format, stripMetadataCBox.Checked, targetW, targetH, targetSizeBytes);
+            preview.ShowDialog();
+        };
     }
 
-    private void qualityTrackBar_Scroll(object sender, EventArgs e) {
-        qualityNumeric.Value = qualityTrackBar.Value;
+    private void UpdateResizeModeUI() {
+        int mode = resizeModeCombo.SelectedIndex;
+        resizeTrackBar.Visible = resizeLabel.Visible = resizeNumeric.Visible = (mode == 0);
+        targetResPanel.Visible = (mode == 1);
+        targetSizePanel.Visible = (mode == 2);
+
+        if (mode == 1) {
+            targetWidthInput.Value = settings.TargetWidth;
+            targetHeightInput.Value = settings.TargetHeight;
+        } else if (mode == 2) {
+            targetSizeInput.Text = settings.TargetFileSizeKB.ToString();
+        }
     }
 
-    private void qualityNumeric_ValueChanged(object sender, EventArgs e) {
-        qualityTrackBar.Value = (int)qualityNumeric.Value;
+    private void PresetsCombo_SelectedIndexChanged(object sender, EventArgs e) {
+        suppressSettingsUpdate = true;
+        switch (presetsCombo.SelectedIndex) {
+            case 1: // Web Optimized
+                qualityNumeric.Value = 75;
+                resizeNumeric.Value = 80;
+                saveJPEGRButton.Checked = true;
+                stripMetadataCBox.Checked = true;
+                break;
+            case 2: // High Quality (PNG)
+                qualityNumeric.Value = 90;
+                resizeNumeric.Value = 100;
+                savePNGRButton.Checked = true;
+                stripMetadataCBox.Checked = false;
+                break;
+            case 3: // Max Compression (WEBP)
+                qualityNumeric.Value = 60;
+                resizeNumeric.Value = 70;
+                saveWEBPRButton.Checked = true;
+                stripMetadataCBox.Checked = true;
+                break;
+        }
+        suppressSettingsUpdate = false;
+        SaveSettings();
     }
 
-    private void resizeTrackBar_Scroll(object sender, EventArgs e) {
-        resizeNumeric.Value = resizeTrackBar.Value;
-    }
-
-    private void resizeNumeric_ValueChanged(object sender, EventArgs e) {
-        resizeTrackBar.Value = (int)resizeNumeric.Value;
-    }
-
-    private void bigFileCBox_CheckedChanged(object sender, EventArgs e) {
-        KBMKBox.Enabled = bigFileCBox.Checked;
-        fileSizeInput.Enabled = bigFileCBox.Checked;
+    private void chooseFolderBtn_Click(object sender, EventArgs e) {
+        using var fbd = new FolderBrowserDialog();
+        if (fbd.ShowDialog() == DialogResult.OK) {
+            directoryPathInput.Text = fbd.SelectedPath;
+        }
     }
 
     private void chooseSaveFolderBtn_Click(object sender, EventArgs e) {
-        using (var fbd = new FolderBrowserDialog()) {
-            DialogResult result = fbd.ShowDialog();
-
-            if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(fbd.SelectedPath)) {
-                savePathInput.Text = fbd.SelectedPath;
-            }
+        using var fbd = new FolderBrowserDialog();
+        if (fbd.ShowDialog() == DialogResult.OK) {
+            savePathInput.Text = fbd.SelectedPath;
         }
+    }
+
+    private void dryRunBtn_Click(object sender, EventArgs e) {
+        var selected = fileTreePanel.GetSelectedFiles();
+        if (selected.Count == 0) {
+            MessageBox.Show("No files selected!");
+            return;
+        }
+        
+        long totalSize = selected.Sum(f => new FileInfo(f).Length);
+        MessageBox.Show($"Selected {selected.Count} files.\nTotal Size: {totalSize / 1024 / 1024} MB\nEstimated Savings: ~50-80% based on settings.");
     }
 
     private void compressBtn_Click(object sender, EventArgs e) {
-        string compressPath = directoryPathInput.Text;
-
-        if (string.IsNullOrWhiteSpace(compressPath) || !Directory.Exists(compressPath)) {
-            MessageBox.Show("Please select a valid input folder.", "Error!");
+        var selectedFiles = fileTreePanel.GetSelectedFiles();
+        if (selectedFiles.Count == 0) {
+            MessageBox.Show("Please select files in the explorer first.");
             return;
         }
 
-        string savePath = savePathInput.Text;
-        int quality = qualityTrackBar.Value;
-        int resize = resizeTrackBar.Value;
-        bool compressChild = compressChildrenCBox.Checked;
-        bool overwrite = overrideCBox.Checked;
-        bool compressCompressed = compressCompressedCBox.Checked;
-        SaveAs saveAs;
-        int minimumFileSize = -1;
-
-
-        var checkedButton = panel1.Controls.OfType<RadioButton>().FirstOrDefault(r => r.Checked);
-        saveAs = (SaveAs)checkedButton.TabIndex;
-
-        if (bigFileCBox.Checked) {
-            var parsed = int.TryParse(fileSizeInput.Text, out minimumFileSize);
-            if (!parsed) {
-                MessageBox.Show("Please check inputs", "Error!");
-                return;
-            }
-
-            switch (KBMKBox.SelectedIndex) {
-                case 0:
-                    minimumFileSize *= 1024;
-                    break;
-                case 1:
-                    minimumFileSize *= 1048576;
-                    break;
-                default: return;
-            }
+        if (string.IsNullOrEmpty(savePathInput.Text)) {
+            MessageBox.Show("Please select a save directory.");
+            return;
         }
 
-        var compressor = new Compressor(compressPath, savePath, quality, resize, compressChild, overwrite, compressCompressed, saveAs,
-            minimumFileSize);
-        compressor.StripMetadata = stripMetadataCBox.Checked;
+        SaveAs format = saveJPEGRButton.Checked ? SaveAs.JPEG : 
+                        savePNGRButton.Checked ? SaveAs.PNG : SaveAs.WEBP;
 
-        var progressWin = new ProcessDialog();
-        progressWin.CancelAction = () => compressor.Cancel();
-        progressWin.Show(this);
-
-        compressor.ProcessEvent += (o, a) => {
-            progressWin.UpdateProgress(a.ProcessedFiles, a.AllFiles);
-        };
-        
-        compressor.ProcessCompleted += (o, a) => {
-            progressWin.ProcessCompleted();
-            Invoke(new MethodInvoker(() => {
-                MessageBox.Show(this, $"Process completed! {a.ProcessedFiles} of {a.AllFiles}", "Success");
-            }));
+        compressor = new Compressor(directoryPathInput.Text) {
+            SavePath = savePathInput.Text,
+            Quality = (int)qualityNumeric.Value,
+            Resize = (int)resizeNumeric.Value,
+            SaveAs = format,
+            StripMetadata = stripMetadataCBox.Checked,
+            CopyNonImages = copyNonImagesCBox.Checked,
+            OverwritePolicy = overwritePolicyCombo.SelectedIndex,
+            ExplicitFiles = selectedFiles,
+            TargetWidth = settings.ResizeMode == 1 ? (int)targetWidthInput.Value : 0,
+            TargetHeight = settings.ResizeMode == 1 ? (int)targetHeightInput.Value : 0,
+            TargetFileSizeBytes = settings.ResizeMode == 2 ? settings.TargetFileSizeKB * 1024 : 0
         };
 
-        compressor.ProcessCanceled += (o, a) => {
-            progressWin.ProcessCompleted();
-            Invoke(new MethodInvoker(() => {
-                MessageBox.Show(this, $"Process canceled! {a.ProcessedFiles} of {a.AllFiles} processed.", "Canceled");
-            }));
+        var dialog = new ProcessDialog();
+        dialog.CancelAction = () => compressor.Cancel();
+
+        compressor.ProcessEvent += (s, args) => dialog.UpdateProgress(args.ProcessedFiles, args.AllFiles);
+        compressor.WorkerActivity += (s, act) => dialog.UpdateWorkerSlot(act.Slot, act.FileName);
+        compressor.ProcessCompleted += (s, args) => {
+            dialog.ProcessCompleted();
+            this.Invoke(new MethodInvoker(() => MessageBox.Show("Compression Finished!")));
+        };
+        compressor.ProcessCanceled += (s, args) => {
+            dialog.ProcessCompleted();
+            this.Invoke(new MethodInvoker(() => MessageBox.Show("Compression Canceled.")));
         };
 
-        compressor.ErrorOccurred += (o, msg) => {
-            Invoke(new MethodInvoker(() => {
-                MessageBox.Show(this, msg, "Process Error");
-            }));
-        };
-        
         compressor.CompressAsync();
-        
-    }
-
-    private void directoryPathInput_TextChanged(object sender, EventArgs e) {
-        savePathInput.Text = Directory.Exists(directoryPathInput.Text) ? $"{directoryPathInput.Text}\\Compressed" : "";
+        dialog.ShowDialog();
     }
 }
