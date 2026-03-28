@@ -1,6 +1,6 @@
 using System;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public class FileNode {
     public string Path { get; set; }

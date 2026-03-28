@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using System.Windows.Forms;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 static class Program {
     [STAThread]

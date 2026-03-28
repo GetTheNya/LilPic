@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace BulkImageCompressor; 
+namespace LilPic; 
 
 partial class ProcessDialog {
     /// <summary>

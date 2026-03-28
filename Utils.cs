@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.IO;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public static class Utils {
     private static Icon _appIcon;

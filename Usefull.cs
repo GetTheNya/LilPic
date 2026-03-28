@@ -1,6 +1,6 @@
 using System;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public enum SaveAs {
     JPEG,

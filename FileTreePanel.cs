@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public partial class FileTreePanel : UserControl {
     private ListView fileListView;

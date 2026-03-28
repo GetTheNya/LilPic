@@ -5,7 +5,7 @@ using System.IO;
 using System.Threading;
 using ShellProgressBar;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public class ConsoleCompressor {
     private readonly List<string> _args;

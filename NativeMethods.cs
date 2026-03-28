@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace BulkImageCompressor; 
+namespace LilPic; 
 
 public class NativeMethods {
     [DllImport("kernel32.dll")]

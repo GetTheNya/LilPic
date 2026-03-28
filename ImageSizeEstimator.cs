@@ -1,7 +1,7 @@
 using System;
 using SkiaSharp;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public static class ImageSizeEstimator {
     /// <summary>
