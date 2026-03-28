@@ -10,6 +10,7 @@
     <AssemblyName>LilPic</AssemblyName>
     <RootNamespace>LilPic</RootNamespace>
     <ApplicationIcon>icon.ico</ApplicationIcon>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -31,8 +31,15 @@ public partial class MainForm : Form {
 
     private string GetAppVersion() {
         var version = Application.ProductVersion;
+        // Strip out the git commit hash if present (+...)
+        int plusIndex = version.IndexOf('+');
+        if (plusIndex >= 0) version = version.Substring(0, plusIndex);
+
         // Trim build/revision if it's .0.0.0 from local build
-        if (version.EndsWith(".0+0")) version = "v0.0.0-dev";
+        if (version.EndsWith(".0")) version = version.Substring(0, version.Length - 2);
+        if (version.EndsWith(".0")) version = version.Substring(0, version.Length - 2);
+        if (version == "0.0.0" || version == "1.0.0.0") version = "v0.0.0-dev";
+        
         if (!version.StartsWith("v") && version != "v0.0.0-dev") version = "v" + version;
         return version;
     }

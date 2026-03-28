@@ -44,7 +44,7 @@ jobs:
 
     # 2. Self-Contained Build (Larger, win-x64)
     - name: Publish Self-Contained
-      run: dotnet publish LilPic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/self-contained-win-x64
+      run: dotnet publish LilPic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=false -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/self-contained-win-x64
 
     - name: Prepare Single EXE
       shell: pwsh
