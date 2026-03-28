@@ -1,8 +1,24 @@
 using System;
+using System.Drawing;
+using System.IO;
 
 namespace BulkImageCompressor;
 
 public static class Utils {
+    private static Icon _appIcon;
+    public static Icon AppIcon {
+        get {
+            if (_appIcon == null && File.Exists("icon.ico")) {
+                try {
+                    _appIcon = new Icon("icon.ico");
+                } catch {
+                    // Ignore icon loading errors
+                }
+            }
+            return _appIcon;
+        }
+    }
+
     public static string FormatSize(long bytes) {
         string[] units = { "B", "KB", "MB", "GB" };
         int unitIndex = 0;

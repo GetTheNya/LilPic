@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -18,6 +18,7 @@ public partial class MainForm : Form {
 
     public MainForm() {
         InitializeComponent();
+        this.Icon = Utils.AppIcon;
         LoadSettings();
         SetupEvents();
         
@@ -321,6 +322,7 @@ public partial class MainForm : Form {
             SkipIfSmallerThanRes = settings.SkipIfSmallerThanRes,
             MinWidthToProcess = settings.MinWidthToProcess,
             MinHeightToProcess = settings.MinHeightToProcess,
+            CompressChildren = true,
             IsDryRun = true
         };
 
@@ -396,7 +398,8 @@ public partial class MainForm : Form {
             MinSizeToProcessKB = settings.MinSizeToProcessKB,
             SkipIfSmallerThanRes = settings.SkipIfSmallerThanRes,
             MinWidthToProcess = settings.MinWidthToProcess,
-            MinHeightToProcess = settings.MinHeightToProcess
+            MinHeightToProcess = settings.MinHeightToProcess,
+            CompressChildren = true
         };
 
         var dialog = new ProcessDialog();
