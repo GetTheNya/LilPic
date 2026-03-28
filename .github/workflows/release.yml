@@ -40,11 +40,15 @@ jobs:
 
     # 1. Framework Dependent Build (Smaller, needs .NET 8)
     - name: Publish Framework Dependent
-      run: dotnet publish LilPic.csproj -c Release -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/framework-dependent
+      run: dotnet publish LilPic.csproj -c Release -r win-x64 --self-contained false -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/framework-dependent
 
     # 2. Self-Contained Build (Larger, win-x64)
     - name: Publish Self-Contained
-      run: dotnet publish LilPic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/self-contained-win-x64
+      run: dotnet publish LilPic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/self-contained-win-x64
+
+    - name: Prepare Single EXE
+      shell: pwsh
+      run: cp ./publish/self-contained-win-x64/LilPic.exe ./LilPic-Standalone.exe
 
     - name: Zip Artifacts
       shell: pwsh
@@ -57,6 +61,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
+          LilPic-Standalone.exe
           LilPic-FrameworkDependent.zip
           LilPic-SelfContained-win-x64.zip
         body: "LilPic Release - Automated Build"
