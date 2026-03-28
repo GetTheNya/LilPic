@@ -41,7 +41,7 @@ public class Compressor {
         }
     }
 
-    public bool CompressChildren { get; set; }
+    public bool CompressChildren { get; set; } = true;
     public int OverwritePolicy { get; set; } // 0: Suffix, 1: Overwrite, 2: Skip
     public bool CompressCompressed { get; set; }
     public SaveAs SaveAs { get; set; }
@@ -101,7 +101,7 @@ public class Compressor {
         SavePath = savePath;
         Quality = quality;
         Resize = resize;
-        CompressChildren = compressChild;
+        CompressChildren = true; // Always recursive for extras scan
         OverwritePolicy = overwrite ? 1 : 0;
         CompressCompressed = compressCompressed;
         SaveAs = saveAs;
@@ -116,7 +116,7 @@ public class Compressor {
         SavePath = Path.Combine(CompressPath, "Compressed");
         Quality = 80;
         Resize = 80;
-        CompressChildren = false;
+        CompressChildren = true;
         OverwritePolicy = 0;
         CompressCompressed = false;
         SaveAs = SaveAs.JPEG;
@@ -155,7 +155,16 @@ public class Compressor {
                 ? Directory.GetFiles(CompressPath, "*.*", SearchOption.AllDirectories)
                 : Directory.GetFiles(CompressPath, "*.*", SearchOption.TopDirectoryOnly);
 
+            string normSavePath = Path.GetFullPath(SavePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            string normCompressPath = Path.GetFullPath(CompressPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            bool isOutputInsideInput = normSavePath.StartsWith(normCompressPath, StringComparison.OrdinalIgnoreCase) && 
+                                     !normSavePath.Equals(normCompressPath, StringComparison.OrdinalIgnoreCase);
+
             foreach (var f in allDiskFiles) {
+                // Prevent infinite recursion or redundant processing: skip files already in the output directory
+                // only if the output directory is a subfolder of the input directory.
+                if (isOutputInsideInput && Path.GetFullPath(f).StartsWith(normSavePath, StringComparison.OrdinalIgnoreCase)) continue;
+
                 // If this file is already in our list (via explicit selection), skip it to avoid duplicates
                 if (explicitSet != null && explicitSet.Contains(f)) continue;
 
@@ -321,9 +330,9 @@ public class Compressor {
     }
 
     private void SaveToFile(string originalFile, byte[] data, string ext) {
-        var filePath = Path.GetDirectoryName(originalFile);
-        var fileName = Path.GetFileNameWithoutExtension(originalFile);
-        var relativeDir = filePath.Replace(CompressPath, "").TrimStart(Path.DirectorySeparatorChar);
+        string relativePath = Path.GetRelativePath(CompressPath, originalFile);
+        string relativeDir = Path.GetDirectoryName(relativePath);
+        string fileName = Path.GetFileNameWithoutExtension(originalFile);
 
         try {
             lock (_lockFileNameObject) {

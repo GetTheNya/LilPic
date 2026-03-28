@@ -16,6 +16,7 @@ public partial class ProcessDialog : Form {
 
     public ProcessDialog() {
         InitializeComponent();
+        this.Icon = Utils.AppIcon;
     }
 
     public void UpdateProgress(int completed, int allCount) {

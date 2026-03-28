@@ -32,6 +32,7 @@ public class PreviewWindow : Form {
     public PreviewWindow(string filePath, int quality, int resizePercent, SKEncodedImageFormat format, 
                          bool stripMetadata, int targetWidth, int targetHeight, long targetFileSize) {
         this.Text = $"Preview: {Path.GetFileName(filePath)}";
+        this.Icon = Utils.AppIcon;
         this.Size = new Size(1100, 800);
         this.StartPosition = FormStartPosition.CenterParent;
         this.DoubleBuffered = true;
