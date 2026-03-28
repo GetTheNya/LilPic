@@ -1,4 +1,4 @@
-﻿namespace LilPic;
+namespace LilPic;
 
 partial class MainForm {
     private System.ComponentModel.IContainer components = null;
@@ -53,6 +53,8 @@ partial class MainForm {
         this.dryRunBtn = new System.Windows.Forms.Button();
         this.statusStrip = new System.Windows.Forms.StatusStrip();
         this.statusLabel = new System.Windows.Forms.ToolStripStatusLabel();
+        this.versionLabel = new System.Windows.Forms.ToolStripStatusLabel();
+        this.aboutLink = new System.Windows.Forms.ToolStripStatusLabel();
         
         ((System.ComponentModel.ISupportInitialize)(this.splitContainer)).BeginInit();
         this.splitContainer.Panel1.SuspendLayout();
@@ -311,8 +313,18 @@ partial class MainForm {
         this.compressBtn.BackColor = System.Drawing.Color.LightGreen;
 
         // Status Strip
-        this.statusStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { this.statusLabel });
+        this.statusStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { 
+            this.statusLabel, 
+            new System.Windows.Forms.ToolStripStatusLabel { Spring = true }, // Spacer
+            this.versionLabel,
+            this.aboutLink 
+        });
         this.statusLabel.Text = "Ready";
+        this.versionLabel.Text = "";
+        this.versionLabel.ForeColor = System.Drawing.Color.Gray;
+        this.aboutLink.Text = "About";
+        this.aboutLink.IsLink = true;
+        this.aboutLink.Click += new System.EventHandler(this.aboutLink_Click);
 
         // MainForm
         this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -379,6 +391,8 @@ partial class MainForm {
     private System.Windows.Forms.Button dryRunBtn;
     private System.Windows.Forms.StatusStrip statusStrip;
     private System.Windows.Forms.ToolStripStatusLabel statusLabel;
+    private System.Windows.Forms.ToolStripStatusLabel versionLabel;
+    private System.Windows.Forms.ToolStripStatusLabel aboutLink;
 
     // Additional target panels needed for logic
     private System.Windows.Forms.Panel targetSizePanel;

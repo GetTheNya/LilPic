@@ -19,11 +19,22 @@ public partial class MainForm : Form {
     public MainForm() {
         InitializeComponent();
         this.Icon = Utils.AppIcon;
+        this.statusLabel.Text = "Ready";
+        this.versionLabel.Text = GetAppVersion();
+        this.versionLabel.ForeColor = System.Drawing.Color.Gray;
         LoadSettings();
         SetupEvents();
         
         // Initial state
         UpdateResizeModeUI();
+    }
+
+    private string GetAppVersion() {
+        var version = Application.ProductVersion;
+        // Trim build/revision if it's .0.0.0 from local build
+        if (version.EndsWith(".0+0")) version = "v0.0.0-dev";
+        if (!version.StartsWith("v") && version != "v0.0.0-dev") version = "v" + version;
+        return version;
     }
 
     private void LoadSettings() {
@@ -425,5 +436,17 @@ public partial class MainForm : Form {
 
         compressor.CompressAsync();
         dialog.ShowDialog();
+    }
+
+    private void aboutLink_Click(object sender, EventArgs e) {
+        string aboutTitle = "About LilPic";
+        string aboutText = "LilPic - Bulk Image Compressor\n" +
+                           "Version: " + GetAppVersion() + "\n\n" +
+                           "A powerful and lightweight tool for bulk image compression and resizing.\n\n" +
+                           "License: MIT\n" +
+                           "Author: GetTheNya\n" +
+                           "GitHub: github.com/GetTheNya/LilPic";
+
+        MessageBox.Show(aboutText, aboutTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 }
