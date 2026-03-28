@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using SkiaSharp;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public partial class MainForm : Form {
     private AppSettings settings;

@@ -2,7 +2,7 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public partial class ProcessDialog : Form {
     private bool CanClose = false;

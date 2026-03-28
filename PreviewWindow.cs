@@ -6,7 +6,7 @@ using System.Windows.Forms;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public class PreviewWindow : Form {
     private SkiaSharp.Views.Desktop.SKControl previewControl;

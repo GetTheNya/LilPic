@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public class AppSettings {
     public string LastInputFolder { get; set; }
@@ -29,7 +29,7 @@ public class AppSettings {
 
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "BulkImageCompressor", "settings.json");
+        "LilPic", "settings.json");
 
     public void Save() {
         try {

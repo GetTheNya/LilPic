@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public static class AllowedExtensions {
     public static readonly HashSet<string> ImageExtensions = new() {

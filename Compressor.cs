@@ -8,7 +8,7 @@ using System.Windows.Forms;
 using ExifLibrary;
 using SkiaSharp;
 
-namespace BulkImageCompressor;
+namespace LilPic;
 
 public class Compressor {
     public string CompressPath { get; set; }
