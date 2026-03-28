@@ -28,13 +28,23 @@ jobs:
     - name: Build
       run: dotnet build --no-restore -c Release LilPic.sln
 
+    - name: Set Version
+      id: version
+      shell: pwsh
+      run: |
+        $ver = "${{ github.ref_name }}"
+        $numericVer = ($ver -replace '^v', '')
+        if ("${{ github.ref_type }}" -ne "tag") { $numericVer = "0.0.0"; $ver = "0.0.0-dev" }
+        echo "VAL=$ver" >> $env:GITHUB_OUTPUT
+        echo "NUM=$numericVer" >> $env:GITHUB_OUTPUT
+
     # 1. Framework Dependent Build (Smaller, needs .NET 8)
     - name: Publish Framework Dependent
-      run: dotnet publish LilPic.csproj -c Release -p:Version=${{ github.ref_name }} -p:InformationalVersion=${{ github.ref_name }} -o ./publish/framework-dependent
+      run: dotnet publish LilPic.csproj -c Release -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/framework-dependent
 
     # 2. Self-Contained Build (Larger, win-x64)
     - name: Publish Self-Contained
-      run: dotnet publish LilPic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:Version=${{ github.ref_name }} -p:InformationalVersion=${{ github.ref_name }} -o ./publish/self-contained-win-x64
+      run: dotnet publish LilPic.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:Version=${{ steps.version.outputs.NUM }} -p:InformationalVersion=${{ steps.version.outputs.VAL }} -o ./publish/self-contained-win-x64
 
     - name: Zip Artifacts
       shell: pwsh
