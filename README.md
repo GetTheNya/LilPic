@@ -3,7 +3,13 @@
 LilPic is a powerful and lightweight bulk image compressor for Windows. It allows you to quickly process large collections of images with fine-grained control over quality, size, and metadata.
 
 <p align="center">
-  <img src="icon.png" width="200" alt="LilPic Dashboard">
+  <img src="icon.png" width="200" alt="LilPic Logo">
+</p>
+
+## Screenshots
+
+<p align="center">
+  <img src="assets/screenshots/main_window.png" width="600" alt="LilPic Main Window">
 </p>
 
 ## Features
