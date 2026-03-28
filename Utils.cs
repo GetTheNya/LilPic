@@ -8,9 +8,16 @@ public static class Utils {
     private static Icon _appIcon;
     public static Icon AppIcon {
         get {
-            if (_appIcon == null && File.Exists("icon.ico")) {
+            if (_appIcon == null) {
                 try {
-                    _appIcon = new Icon("icon.ico");
+                    var asm = typeof(Utils).Assembly;
+                    using var stream = asm.GetManifestResourceStream("LilPic.icon.ico");
+                    if (stream != null) {
+                        _appIcon = new Icon(stream);
+                    } else {
+                        // Fallback to loose file if resource not found
+                        if (File.Exists("icon.ico")) _appIcon = new Icon("icon.ico");
+                    }
                 } catch {
                     // Ignore icon loading errors
                 }

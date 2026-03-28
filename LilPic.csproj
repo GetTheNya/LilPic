@@ -22,9 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="icon.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <EmbeddedResource Include="icon.ico" />
     <None Update="icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
