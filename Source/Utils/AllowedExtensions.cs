@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace LilPic;
+namespace LilPic.Utils;
 
 public static class AllowedExtensions {
     public static readonly HashSet<string> ImageExtensions = new() {

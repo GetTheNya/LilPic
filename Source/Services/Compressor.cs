@@ -8,7 +8,10 @@ using System.Windows.Forms;
 using ExifLibrary;
 using SkiaSharp;
 
-namespace LilPic;
+using LilPic.Models;
+using LilPic.Utils;
+
+namespace LilPic.Services;
 
 public class Compressor {
     public string CompressPath { get; set; }
@@ -276,7 +279,7 @@ public class Compressor {
                 // Skip if smaller than size
                 if (SkipIfSmallerThanSize && imageData.Length < MinSizeToProcessKB * 1024) {
                     FileProcessed?.Invoke(this, (file, "⏭ Skip", "Smaller than min size", 0));
-                    LogMessage?.Invoke(this, ($"Skipped {Path.GetFileName(file)}: Size ({Utils.FormatSize(imageData.Length)}) smaller than {MinSizeToProcessKB} KB", false));
+                    LogMessage?.Invoke(this, ($"Skipped {Path.GetFileName(file)}: Size ({CommonUtils.FormatSize(imageData.Length)}) smaller than {MinSizeToProcessKB} KB", false));
                     return;
                 }
 

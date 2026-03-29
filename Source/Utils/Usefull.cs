@@ -1,6 +1,6 @@
 using System;
 
-namespace LilPic;
+namespace LilPic.Utils;
 
 public enum SaveAs {
     JPEG,

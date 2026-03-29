@@ -5,7 +5,9 @@ using System.IO;
 using System.Threading;
 using ShellProgressBar;
 
-namespace LilPic;
+using LilPic.Utils;
+
+namespace LilPic.Services;
 
 public class ConsoleCompressor {
     private readonly List<string> _args;

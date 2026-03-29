@@ -5,7 +5,10 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace LilPic;
+using LilPic.Models;
+using LilPic.Utils;
+
+namespace LilPic.UI;
 
 public partial class FileTreePanel : UserControl {
     private ListView fileListView;
@@ -438,8 +441,8 @@ public partial class FileTreePanel : UserControl {
         if (e.ItemIndex >= 0 && e.ItemIndex < filteredNodes.Count) {
             var node = filteredNodes[e.ItemIndex];
             var item = new ListViewItem(node.Name) { Checked = node.IsChecked };
-            item.SubItems.Add(Utils.FormatSize(node.Size));
-            item.SubItems.Add(node.EstimatedSize.HasValue ? Utils.FormatSize(node.EstimatedSize.Value) : "—");
+            item.SubItems.Add(CommonUtils.FormatSize(node.Size));
+            item.SubItems.Add(node.EstimatedSize.HasValue ? CommonUtils.FormatSize(node.EstimatedSize.Value) : "—");
             item.SubItems.Add(node.Resolution);
             item.SubItems.Add(node.Status);
 

@@ -1,6 +1,6 @@
-using System;
+using LilPic.Utils;
 
-namespace LilPic;
+namespace LilPic.Models;
 
 public class FileNode {
     public string Path { get; set; }

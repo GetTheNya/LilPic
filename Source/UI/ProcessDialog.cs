@@ -2,7 +2,9 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace LilPic;
+using LilPic.Utils;
+
+namespace LilPic.UI;
 
 public partial class ProcessDialog : Form {
     private bool CanClose = false;
@@ -16,7 +18,7 @@ public partial class ProcessDialog : Form {
 
     public ProcessDialog() {
         InitializeComponent();
-        this.Icon = Utils.AppIcon;
+        this.Icon = CommonUtils.AppIcon;
     }
 
     public void UpdateProgress(int completed, int allCount) {

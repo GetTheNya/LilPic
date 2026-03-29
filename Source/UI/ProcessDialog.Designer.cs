@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace LilPic; 
+namespace LilPic.UI; 
 
 partial class ProcessDialog {
     /// <summary>

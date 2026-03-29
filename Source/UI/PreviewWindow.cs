@@ -6,7 +6,10 @@ using System.Windows.Forms;
 using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 
-namespace LilPic;
+using LilPic.Services;
+using LilPic.Utils;
+
+namespace LilPic.UI;
 
 public class PreviewWindow : Form {
     private SkiaSharp.Views.Desktop.SKControl previewControl;
@@ -32,7 +35,7 @@ public class PreviewWindow : Form {
     public PreviewWindow(string filePath, int quality, int resizePercent, SKEncodedImageFormat format, 
                          bool stripMetadata, int targetWidth, int targetHeight, long targetFileSize) {
         this.Text = $"Preview: {Path.GetFileName(filePath)}";
-        this.Icon = Utils.AppIcon;
+        this.Icon = CommonUtils.AppIcon;
         this.Size = new Size(1100, 800);
         this.StartPosition = FormStartPosition.CenterParent;
         this.DoubleBuffered = true;
@@ -50,7 +53,7 @@ public class PreviewWindow : Form {
 
                 this.Invoke(new Action(() => {
                     isLoading = false;
-                    infoLabel.Text = $"Original: {Utils.FormatSize(data.Length)} ({originalBitmap.Width}x{originalBitmap.Height})   ➜   Compressed: ~{Utils.FormatSize(compressedBytes.Length)} ({compressedBitmap.Width}x{compressedBitmap.Height})";
+                    infoLabel.Text = $"Original: {CommonUtils.FormatSize(data.Length)} ({originalBitmap.Width}x{originalBitmap.Height})   ➜   Compressed: ~{CommonUtils.FormatSize(compressedBytes.Length)} ({compressedBitmap.Width}x{compressedBitmap.Height})";
                     previewControl.Invalidate();
                 }));
             } catch (Exception ex) {

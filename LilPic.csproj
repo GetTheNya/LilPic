@@ -9,7 +9,7 @@
     <LangVersion>11</LangVersion>
     <AssemblyName>LilPic</AssemblyName>
     <RootNamespace>LilPic</RootNamespace>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <ApplicationIcon>assets\icon.ico</ApplicationIcon>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
@@ -22,8 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="icon.ico" />
-    <None Update="icon.png">
+    <EmbeddedResource Include="assets\icon.ico" />
+    <None Update="assets\icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

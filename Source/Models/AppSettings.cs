@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 
-namespace LilPic;
+namespace LilPic.Models;
 
 public class AppSettings {
     public string LastInputFolder { get; set; }

@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace LilPic; 
+namespace LilPic.Utils; 
 
 public class NativeMethods {
     [DllImport("kernel32.dll")]

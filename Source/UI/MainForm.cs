@@ -8,7 +8,11 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using SkiaSharp;
 
-namespace LilPic;
+using LilPic.Models;
+using LilPic.Services;
+using LilPic.Utils;
+
+namespace LilPic.UI;
 
 public partial class MainForm : Form {
     private AppSettings settings;
@@ -18,7 +22,7 @@ public partial class MainForm : Form {
 
     public MainForm() {
         InitializeComponent();
-        this.Icon = Utils.AppIcon;
+        this.Icon = CommonUtils.AppIcon;
         this.statusLabel.Text = "Ready";
         this.versionLabel.Text = GetAppVersion();
         this.versionLabel.ForeColor = System.Drawing.Color.Gray;
@@ -366,9 +370,9 @@ public partial class MainForm : Form {
                 MessageBox.Show(
                     $"Dry Run Finished!\n\n" +
                     $"Images Processed: {args.ProcessedFiles}\n" +
-                    $"Original Size: {Utils.FormatSize(originalSize)}\n" +
-                    $"Estimated Size: {Utils.FormatSize(estimatedSize)}\n" +
-                    $"Potential Savings: {Utils.FormatSize(savings)} ({percent:F1}%)",
+                    $"Original Size: {CommonUtils.FormatSize(originalSize)}\n" +
+                    $"Estimated Size: {CommonUtils.FormatSize(estimatedSize)}\n" +
+                    $"Potential Savings: {CommonUtils.FormatSize(savings)} ({percent:F1}%)",
                     "Dry Run Results", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }));
         };

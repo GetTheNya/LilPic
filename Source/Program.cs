@@ -1,5 +1,5 @@
-using System;
-using System.Windows.Forms;
+using LilPic.UI;
+using LilPic.Services;
 
 namespace LilPic;
 

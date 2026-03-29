@@ -1,7 +1,7 @@
 using System;
 using SkiaSharp;
 
-namespace LilPic;
+namespace LilPic.Services;
 
 public static class ImageSizeEstimator {
     /// <summary>

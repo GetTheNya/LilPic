@@ -1,4 +1,4 @@
-namespace LilPic;
+namespace LilPic.UI;
 
 partial class MainForm {
     private System.ComponentModel.IContainer components = null;
@@ -13,7 +13,7 @@ partial class MainForm {
     private void InitializeComponent() {
         System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
         this.splitContainer = new System.Windows.Forms.SplitContainer();
-        this.fileTreePanel = new LilPic.FileTreePanel();
+        this.fileTreePanel = new LilPic.UI.FileTreePanel();
         this.settingsPanel = new System.Windows.Forms.Panel();
         this.presetsLabel = new System.Windows.Forms.Label();
         this.presetsCombo = new System.Windows.Forms.ComboBox();
@@ -359,7 +359,7 @@ partial class MainForm {
     }
 
     private System.Windows.Forms.SplitContainer splitContainer;
-    private LilPic.FileTreePanel fileTreePanel;
+    private LilPic.UI.FileTreePanel fileTreePanel;
     private System.Windows.Forms.Panel settingsPanel;
     private System.Windows.Forms.Label presetsLabel;
     private System.Windows.Forms.ComboBox presetsCombo;
